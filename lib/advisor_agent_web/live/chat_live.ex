@@ -1,79 +1,197 @@
 defmodule AdvisorAgentWeb.ChatLive do
   use AdvisorAgentWeb, :live_view
 
-  alias AdvisorAgent.GmailClient
-  alias AdvisorAgent.HubspotClient
-  alias AdvisorAgent.OpenAIClient
-  alias AdvisorAgent.Repo
+  alias AdvisorAgent.{GmailClient, HubspotClient, OpenAIClient, Repo, Tools, ToolExecutor}
   require Logger
 
-  def mount(_params, %{current_user: current_user, hubspot_token: hubspot_token}, socket) do
-    if current_user && current_user.token do
-      user_id = current_user.email # Using email as user_id for now
-      google_access_token = current_user.token
+  def mount(_params, _session, socket) do
+    current_user = socket.assigns[:current_user]
+
+    if current_user && current_user.google_access_token do
+      user_id = current_user.email
 
       Task.start(fn ->
-        GmailClient.fetch_and_store_emails(user_id, google_access_token)
+        GmailClient.fetch_and_store_emails(user_id, current_user.google_access_token)
       end)
     end
 
-    if current_user && hubspot_token && hubspot_token.token do
-      user_id = current_user.email # Using email as user_id for now
-      hubspot_access_token = hubspot_token.token
+    if current_user && current_user.hubspot_access_token do
+      user_id = current_user.email
 
       Task.start(fn ->
-        HubspotClient.fetch_and_store_contacts_and_notes(user_id, hubspot_access_token)
+        HubspotClient.fetch_and_store_contacts_and_notes(user_id, current_user.hubspot_access_token)
       end)
     end
 
-    {:ok, assign(socket, :messages, [])
-          |> assign(:current_user, current_user)
-          |> assign(:hubspot_token, hubspot_token)
-          |> assign(:user_input, "")}
+    {:ok,
+     assign(socket, :messages, [])
+     |> assign(:current_user, current_user)
+     |> assign(:user_input, "")}
   end
 
   def handle_event("send_message", %{"user_message" => user_message}, socket) do
-    # Add user message to chat
-    new_messages = socket.assigns.messages ++ [%{text: user_message, sender: :user}]
-    socket = assign(socket, :messages, new_messages)
-    socket = assign(socket, :user_input, "")
+    current_user = socket.assigns.current_user
 
-    # Generate embedding for user message
-    case OpenAIClient.generate_embedding(user_message) do
-      {:ok, query_embedding} ->
-        # Perform similarity search
-        relevant_documents = Repo.search_documents(query_embedding)
+    unless current_user do
+      {:noreply, socket}
+    else
+      # Add user message to chat
+      new_messages = socket.assigns.messages ++ [%{text: user_message, sender: :user}]
+      socket = assign(socket, :messages, new_messages)
+      socket = assign(socket, :user_input, "")
 
-        # Prepare context for LLM
-        context = Enum.map_join(relevant_documents, "\n", fn doc -> doc.content end)
+      # Process message with RAG and tool calling
+      socket =
+        case process_message_with_tools(user_message, current_user) do
+          {:ok, response} ->
+            new_messages = socket.assigns.messages ++ [%{text: response, sender: :agent}]
+            assign(socket, :messages, new_messages)
 
-        # Generate response using LLM
-        system_message = "You are a helpful AI assistant for financial advisors. Use the provided context to answer questions about clients. If the answer is not in the context, say 'I don't have enough information to answer that question.'"
-        messages = [
-          %{"role" => "system", "content" => system_message},
-          %{"role" => "user", "content" => "Context: #{context}\nQuestion: #{user_message}"}
-        ]
-
-        case OpenAIClient.generate_chat_completion(messages) do
-          {:ok, llm_response} ->
-            # Add LLM response to chat
-            new_messages = socket.assigns.messages ++ [%{text: llm_response, sender: :agent}]
-            {:noreply, assign(socket, :messages, new_messages)}
           {:error, error} ->
-            Logger.error("Failed to generate chat completion: #{inspect(error)}")
-            new_messages = socket.assigns.messages ++ [%{text: "Error: Could not generate response.", sender: :agent}]
-            {:noreply, assign(socket, :messages, new_messages)}
+            Logger.error("Failed to process message: #{inspect(error)}")
+            error_msg = "I apologize, but I encountered an error processing your request. Please try again."
+            new_messages = socket.assigns.messages ++ [%{text: error_msg, sender: :agent}]
+            assign(socket, :messages, new_messages)
         end
 
-      {:error, error} ->
-        Logger.error("Failed to generate embedding for user message: #{inspect(error)}")
-        new_messages = socket.assigns.messages ++ [%{text: "Error: Could not process your message.", sender: :agent}]
-        {:noreply, assign(socket, :messages, new_messages)}
+      {:noreply, socket}
     end
   end
 
   def handle_event("update_user_input", %{"value" => value}, socket) do
     {:noreply, assign(socket, :user_input, value)}
+  end
+
+  defp process_message_with_tools(user_message, current_user) do
+    # Generate embedding and get RAG context
+    {context, _rag_error} =
+      case OpenAIClient.generate_embedding(user_message) do
+        {:ok, query_embedding} ->
+          relevant_documents = Repo.search_documents(query_embedding)
+          context_text = Enum.map_join(relevant_documents, "\n", fn doc -> doc.content end)
+          {context_text, nil}
+
+        {:error, error} ->
+          Logger.warning("Failed to generate embedding: #{inspect(error)}")
+          {"", error}
+      end
+
+    # Build system message with RAG context
+    system_content =
+      if context != "" do
+        """
+        You are an AI assistant for financial advisors. You have access to:
+        - Email history and conversations
+        - Calendar information
+        - Hubspot CRM contacts and notes
+
+        Use the following context from the database when relevant:
+        #{context}
+
+        You can use the available tools to help the user with tasks like:
+        - Sending emails
+        - Scheduling meetings
+        - Looking up contacts in Hubspot
+        - Managing calendar events
+
+        Be proactive and helpful. If you need to perform an action, use the appropriate tool.
+        """
+      else
+        """
+        You are an AI assistant for financial advisors. You have access to tools to:
+        - Send emails
+        - Search emails
+        - Manage calendar events
+        - Look up and create Hubspot contacts
+        - Add notes to contacts
+
+        Be proactive and helpful.
+        """
+      end
+
+    # Start conversation with tool calling
+    initial_messages = [
+      %{"role" => "system", "content" => system_content},
+      %{"role" => "user", "content" => user_message}
+    ]
+
+    # Call OpenAI with tools and handle tool calling loop
+    handle_tool_calling_loop(initial_messages, current_user, 0)
+  end
+
+  defp handle_tool_calling_loop(messages, current_user, iteration) do
+    # Prevent infinite loops
+    if iteration > 10 do
+      {:error, "Maximum tool calling iterations reached"}
+    else
+      # Get tool definitions
+      tools = Tools.get_tool_definitions()
+
+      # Call OpenAI with tools
+      case call_openai_with_tools(messages, tools) do
+        {:ok, %{"role" => "assistant", "content" => content, "tool_calls" => nil}}
+        when not is_nil(content) ->
+          # No tool calls, we have the final response
+          {:ok, content}
+
+        {:ok, %{"role" => "assistant", "content" => content, "tool_calls" => tool_calls}}
+        when is_list(tool_calls) and tool_calls != [] ->
+          # LLM wants to call tools
+          Logger.info("LLM requested #{length(tool_calls)} tool call(s)")
+
+          # Add assistant message with tool calls to conversation
+          messages = messages ++ [%{"role" => "assistant", "content" => content, "tool_calls" => tool_calls}]
+
+          # Execute each tool call
+          tool_results =
+            Enum.map(tool_calls, fn tool_call ->
+              tool_name = tool_call["function"]["name"]
+              arguments = Jason.decode!(tool_call["function"]["arguments"])
+
+              Logger.info("Executing tool: #{tool_name}")
+
+              result =
+                case ToolExecutor.execute_tool(tool_name, arguments, current_user) do
+                  {:ok, result} -> result
+                  {:error, error} -> "Error: #{error}"
+                end
+
+              %{
+                "role" => "tool",
+                "tool_call_id" => tool_call["id"],
+                "content" => result
+              }
+            end)
+
+          # Add tool results to conversation
+          messages = messages ++ tool_results
+
+          # Continue the loop with tool results
+          handle_tool_calling_loop(messages, current_user, iteration + 1)
+
+        {:ok, %{"role" => "assistant", "content" => content}} ->
+          # Fallback for when content is present but no tool calls
+          {:ok, content || "I'm not sure how to help with that."}
+
+        {:error, error} ->
+          {:error, error}
+      end
+    end
+  end
+
+  defp call_openai_with_tools(messages, tools) do
+    case OpenAI.chat_completion(
+           model: "gpt-4-turbo-preview",
+           messages: messages,
+           tools: tools,
+           tool_choice: "auto"
+         ) do
+      {:ok, %{choices: [%{"message" => message} | _]}} ->
+        {:ok, message}
+
+      {:error, error} ->
+        {:error, error}
+    end
   end
 
   def render(assigns) do
@@ -87,7 +205,7 @@ defmodule AdvisorAgentWeb.ChatLive do
               <div class="flex items-center">
                 <img src={@current_user.picture} alt={@current_user.name} class="w-8 h-8 rounded-full mr-2">
                 <span class="text-sm font-semibold text-gray-800"><%= @current_user.name %></span>
-                <%= if !@hubspot_token do %>
+                <%= if !@current_user.hubspot_access_token do %>
                   <a href="/auth/hubspot" class="ml-4 px-4 py-2 text-sm font-semibold text-white bg-orange-500 hover:bg-orange-600 rounded-md">Connect to Hubspot</a>
                 <% end %>
                 <a href="/auth/logout" class="ml-4 text-sm font-semibold text-gray-500 hover:text-gray-700">Log out</a>
@@ -125,9 +243,15 @@ defmodule AdvisorAgentWeb.ChatLive do
           </div>
 
           <%= for message <- @messages do %>
-            <div class="mt-6 flex <%= if message.sender == :user, do: "justify-end", else: "justify-start" %>">
-              <div class="<%= if message.sender == :user, do: "bg-blue-500 text-white", else: "bg-gray-200 text-gray-800" %> rounded-lg p-4 max-w-lg">
-                <%= message.text %>
+            <div class={[
+              "mt-6 flex",
+              if(message.sender == :user, do: "justify-end", else: "justify-start")
+            ]}>
+              <div class={[
+                "rounded-lg p-4 max-w-lg",
+                if(message.sender == :user, do: "bg-blue-500 text-white", else: "bg-gray-200 text-gray-800")
+              ]}>
+                {message.text}
               </div>
             </div>
           <% end %>
