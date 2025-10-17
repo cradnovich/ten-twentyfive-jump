@@ -16,8 +16,8 @@ defmodule AdvisorAgent.Application do
       AdvisorAgent.Repo,
       {DNSCluster, query: Application.get_env(:advisor_agent, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: AdvisorAgent.PubSub},
-      # Start a worker by calling: AdvisorAgent.Worker.start_link(arg)
-      # {AdvisorAgent.Worker, arg},
+      # Start the event poller for proactive behavior
+      AdvisorAgent.EventPoller,
       # Start to serve requests, typically the last entry
       AdvisorAgentWeb.Endpoint
     ]

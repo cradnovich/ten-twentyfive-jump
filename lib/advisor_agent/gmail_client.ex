@@ -105,18 +105,61 @@ defmodule AdvisorAgent.GmailClient do
     end
   end
 
-  defp get_message(access_token, message_id) do
+  @doc """
+  Gets the details of a specific email message.
+  """
+  def get_message(access_token, message_id) do
     case Req.get(@gmail_api_base_url <> "/messages/#{message_id}",
-           auth: {:bearer, access_token}
+           auth: {:bearer, access_token},
+           params: %{format: "full"}
          ) do
-      {:ok, %Req.Response{status: 200, body: body}} ->
-        {:ok, body}
+      {:ok, %Req.Response{status: 200, body: message}} ->
+        # Extract useful fields
+        headers = get_in(message, ["payload", "headers"]) || []
+
+        from = find_header(headers, "From")
+        subject = find_header(headers, "Subject")
+        snippet = message["snippet"]
+
+        {:ok,
+         %{
+           "id" => message["id"],
+           "from" => from,
+           "subject" => subject,
+           "snippet" => snippet,
+           "body" => extract_body(message["payload"])
+         }}
 
       {:ok, %Req.Response{status: status, body: body}} ->
         {:error, "Failed to get message: Status #{status}, Body: #{inspect(body)}"}
 
       {:error, error} ->
         {:error, "Failed to get message: #{inspect(error)}"}
+    end
+  end
+
+  defp find_header(headers, name) do
+    case Enum.find(headers, fn h -> h["name"] == name end) do
+      %{"value" => value} -> value
+      _ -> nil
+    end
+  end
+
+  defp extract_body(payload) do
+    cond do
+      payload["body"]["data"] ->
+        Base.decode64!(payload["body"]["data"], padding: false)
+
+      payload["parts"] ->
+        payload["parts"]
+        |> Enum.find(fn part -> part["mimeType"] == "text/plain" end)
+        |> case do
+          %{"body" => %{"data" => data}} -> Base.decode64!(data, padding: false)
+          _ -> ""
+        end
+
+      true ->
+        ""
     end
   end
 
