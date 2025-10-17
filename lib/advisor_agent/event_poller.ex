@@ -4,7 +4,7 @@ defmodule AdvisorAgent.EventPoller do
   """
 
   use GenServer
-  alias AdvisorAgent.{Repo, User, GmailClient, ProactiveAgent}
+  alias AdvisorAgent.{Repo, User, GmailClient, ProactiveAgent, TokenRefresher}
   require Logger
 
   @poll_interval 60_000  # Poll every 60 seconds
@@ -41,7 +41,9 @@ defmodule AdvisorAgent.EventPoller do
 
     Enum.each(users, fn user ->
       if user.google_access_token do
-        poll_gmail(user)
+        # Refresh tokens if needed
+        fresh_user = TokenRefresher.get_user_with_fresh_tokens(user.id)
+        poll_gmail(fresh_user)
       end
     end)
   end
