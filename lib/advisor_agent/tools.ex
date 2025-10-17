@@ -205,6 +205,36 @@ defmodule AdvisorAgent.Tools do
             }
           }
         }
+      },
+      %{
+        type: "function",
+        function: %{
+          name: "create_ongoing_instruction",
+          description:
+            "Create a new ongoing instruction that the AI should always follow. Use this when the user wants you to remember to do something automatically or follow a specific rule.",
+          parameters: %{
+            type: "object",
+            properties: %{
+              instruction: %{
+                type: "string",
+                description:
+                  "The instruction to remember (e.g., 'When someone emails me that is not in Hubspot, create a contact')"
+              }
+            },
+            required: ["instruction"]
+          }
+        }
+      },
+      %{
+        type: "function",
+        function: %{
+          name: "list_ongoing_instructions",
+          description: "List all active ongoing instructions.",
+          parameters: %{
+            type: "object",
+            properties: {}
+          }
+        }
       }
     ]
   end

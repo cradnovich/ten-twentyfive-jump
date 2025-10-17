@@ -2,8 +2,10 @@ defmodule AdvisorAgent.Task do
   use Ecto.Schema
   import Ecto.Changeset
 
+  alias AdvisorAgent.User
+
   schema "tasks" do
-    field :user_id, :integer
+    belongs_to :user, User
     field :description, :string
     field :status, :string, default: "pending"
     field :conversation_history, {:array, :map}, default: []

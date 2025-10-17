@@ -3,7 +3,7 @@ defmodule AdvisorAgent.ToolExecutor do
   Executes tool calls requested by the AI agent.
   """
 
-  alias AdvisorAgent.{GmailClient, CalendarClient, HubspotClient}
+  alias AdvisorAgent.{GmailClient, CalendarClient, HubspotClient, Repo}
   require Logger
 
   @doc """
@@ -36,6 +36,12 @@ defmodule AdvisorAgent.ToolExecutor do
 
       "add_hubspot_note" ->
         add_hubspot_note(arguments, user)
+
+      "create_ongoing_instruction" ->
+        create_ongoing_instruction(arguments, user)
+
+      "list_ongoing_instructions" ->
+        list_ongoing_instructions(user)
 
       _ ->
         {:error, "Unknown tool: #{tool_name}"}
@@ -193,4 +199,29 @@ defmodule AdvisorAgent.ToolExecutor do
 
   defp maybe_add_time_max(params, nil), do: params
   defp maybe_add_time_max(params, time_max), do: Keyword.put(params, :timeMax, time_max)
+
+  defp create_ongoing_instruction(%{"instruction" => instruction}, user) do
+    case Repo.create_instruction(%{user_id: user.id, instruction: instruction}) do
+      {:ok, _instruction} ->
+        {:ok, "Ongoing instruction created successfully: '#{instruction}'"}
+
+      {:error, error} ->
+        {:error, "Failed to create ongoing instruction: #{inspect(error)}"}
+    end
+  end
+
+  defp list_ongoing_instructions(user) do
+    instructions = Repo.get_active_instructions(user.id)
+
+    if instructions == [] do
+      {:ok, "No active ongoing instructions found."}
+    else
+      instructions_text =
+        Enum.map_join(instructions, "\n", fn inst ->
+          "- #{inst.instruction}"
+        end)
+
+      {:ok, "Active ongoing instructions:\n#{instructions_text}"}
+    end
+  end
 end

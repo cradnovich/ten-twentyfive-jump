@@ -2,8 +2,10 @@ defmodule AdvisorAgent.OngoingInstruction do
   use Ecto.Schema
   import Ecto.Changeset
 
+  alias AdvisorAgent.User
+
   schema "ongoing_instructions" do
-    field :user_id, :integer
+    belongs_to :user, User
     field :instruction, :string
     field :active, :boolean, default: true
 

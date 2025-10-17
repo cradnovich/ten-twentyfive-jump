@@ -76,7 +76,21 @@ defmodule AdvisorAgentWeb.ChatLive do
           {"", error}
       end
 
-    # Build system message with RAG context
+    # Get ongoing instructions
+    ongoing_instructions = Repo.get_active_instructions(current_user.id)
+    instructions_text =
+      if ongoing_instructions != [] do
+        instructions_list =
+          Enum.map_join(ongoing_instructions, "\n", fn inst ->
+            "- #{inst.instruction}"
+          end)
+
+        "\n\nONGOING INSTRUCTIONS (always follow these):\n#{instructions_list}"
+      else
+        ""
+      end
+
+    # Build system message with RAG context and ongoing instructions
     system_content =
       if context != "" do
         """
@@ -93,8 +107,9 @@ defmodule AdvisorAgentWeb.ChatLive do
         - Scheduling meetings
         - Looking up contacts in Hubspot
         - Managing calendar events
+        - Creating and managing ongoing instructions
 
-        Be proactive and helpful. If you need to perform an action, use the appropriate tool.
+        Be proactive and helpful. If you need to perform an action, use the appropriate tool.#{instructions_text}
         """
       else
         """
@@ -104,8 +119,9 @@ defmodule AdvisorAgentWeb.ChatLive do
         - Manage calendar events
         - Look up and create Hubspot contacts
         - Add notes to contacts
+        - Create and manage ongoing instructions
 
-        Be proactive and helpful.
+        Be proactive and helpful.#{instructions_text}
         """
       end
 
