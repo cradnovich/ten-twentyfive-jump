@@ -9,8 +9,8 @@ defmodule AdvisorAgent.Repo do
 
   def search_documents(query_embedding, limit \\ 5) do
     Document
-    |> order_by([d], fragment("?<->?", d.embedding, ^query_embedding))
+    |> order_by([d], fragment("? <-> ?", d.embedding, ^query_embedding))
     |> limit(^limit)
-    |> Repo.all()
+    |> __MODULE__.all()
   end
 end
