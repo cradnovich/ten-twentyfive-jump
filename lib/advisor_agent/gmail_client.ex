@@ -6,32 +6,99 @@ defmodule AdvisorAgent.GmailClient do
   alias AdvisorAgent.Repo
   alias AdvisorAgent.Document
   alias AdvisorAgent.OpenAIClient
-  alias OAuth2.Client
   require Logger
 
   @gmail_api_base_url "https://www.googleapis.com/gmail/v1/users/me"
+
+  @doc """
+  Sends an email using Gmail API.
+  """
+  def send_email(access_token, to, subject, body, from \\ nil) do
+    # Build the email in RFC 2822 format
+    from_email = from || "me"
+
+    email_content =
+      """
+      From: #{from_email}
+      To: #{to}
+      Subject: #{subject}
+      Content-Type: text/plain; charset=utf-8
+
+      #{body}
+      """
+      |> String.trim()
+
+    # Base64url encode the email
+    encoded_email =
+      email_content
+      |> Base.url_encode64(padding: false)
+
+    case Req.post(@gmail_api_base_url <> "/messages/send",
+           auth: {:bearer, access_token},
+           json: %{raw: encoded_email}
+         ) do
+      {:ok, %Req.Response{status: 200, body: body}} ->
+        {:ok, body}
+
+      {:ok, %Req.Response{status: status, body: body}} ->
+        Logger.error("Failed to send email: Status #{status}, Body: #{inspect(body)}")
+        {:error, "Failed to send email: Status #{status}"}
+
+      {:error, error} ->
+        Logger.error("Failed to send email: #{inspect(error)}")
+        {:error, "Failed to send email: #{inspect(error)}"}
+    end
+  end
+
+  @doc """
+  Searches for emails matching a query.
+  """
+  def search_emails(access_token, query) do
+    case Req.get(@gmail_api_base_url <> "/messages",
+           auth: {:bearer, access_token},
+           params: %{q: query}
+         ) do
+      {:ok, %Req.Response{status: 200, body: %{"messages" => messages}}} ->
+        {:ok, messages}
+
+      {:ok, %Req.Response{status: 200, body: %{}}} ->
+        {:ok, []}
+
+      {:ok, %Req.Response{status: status, body: body}} ->
+        Logger.error("Failed to search emails: Status #{status}, Body: #{inspect(body)}")
+        {:error, :failed_to_search_emails}
+
+      {:error, error} ->
+        Logger.error("Failed to search emails: #{inspect(error)}")
+        {:error, :failed_to_search_emails}
+    end
+  end
 
   @doc """
   Fetches emails from Gmail and stores them as documents.
   """
   def fetch_and_store_emails(user_id, access_token) do
     # TODO: Implement token refresh logic
-    headers = [{"Authorization", "Bearer #{access_token}"}]
-
-    case Tesla.get(@gmail_api_base_url <> "/messages", headers: headers) do
-      {:ok, %Tesla.Env{status: 200, body: %{"messages" => messages}}} ->
+    case Req.get(@gmail_api_base_url <> "/messages",
+           auth: {:bearer, access_token}
+         ) do
+      {:ok, %Req.Response{status: 200, body: %{"messages" => messages}}} ->
         Enum.each(messages, fn %{"id" => message_id} ->
           case get_message(access_token, message_id) do
             {:ok, message_payload} ->
               process_and_store_message(user_id, message_payload)
+
             {:error, error} ->
               Logger.error("Failed to get message #{message_id}: #{inspect(error)}")
           end
         end)
+
         {:ok, :emails_fetched}
-      {:ok, %Tesla.Env{status: status, body: body}} ->
+
+      {:ok, %Req.Response{status: status, body: body}} ->
         Logger.error("Failed to fetch messages: Status #{status}, Body: #{inspect(body)}")
         {:error, :failed_to_fetch_messages}
+
       {:error, error} ->
         Logger.error("Failed to fetch messages: #{inspect(error)}")
         {:error, :failed_to_fetch_messages}
@@ -39,12 +106,15 @@ defmodule AdvisorAgent.GmailClient do
   end
 
   defp get_message(access_token, message_id) do
-    headers = [{"Authorization", "Bearer #{access_token}"}]
-    case Tesla.get(@gmail_api_base_url <> "/messages/#{message_id}", headers: headers) do
-      {:ok, %Tesla.Env{status: 200, body: body}} ->
+    case Req.get(@gmail_api_base_url <> "/messages/#{message_id}",
+           auth: {:bearer, access_token}
+         ) do
+      {:ok, %Req.Response{status: 200, body: body}} ->
         {:ok, body}
-      {:ok, %Tesla.Env{status: status, body: body}} ->
+
+      {:ok, %Req.Response{status: status, body: body}} ->
         {:error, "Failed to get message: Status #{status}, Body: #{inspect(body)}"}
+
       {:error, error} ->
         {:error, "Failed to get message: #{inspect(error)}"}
     end

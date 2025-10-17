@@ -67,7 +67,8 @@ defmodule AdvisorAgent.MixProject do
       {:ueberauth_google, "~> 0.10"},
       {:dotenv, "~> 3.1.0", only: [:dev, :test]},
       {:ueberauth_hubspot, "~> 0.1.0"},
-      {:openai, "~> 0.4"}
+      {:openai, "~> 0.4"},
+      {:req, "~> 0.5"}
     ]
   end
 
