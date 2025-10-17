@@ -235,6 +235,28 @@ defmodule AdvisorAgent.Tools do
             properties: {}
           }
         }
+      },
+      %{
+        type: "function",
+        function: %{
+          name: "create_task",
+          description:
+            "Create a task that requires multiple steps or waiting for external responses. Use this when you send an email and need to wait for a reply, or when a task cannot be completed immediately.",
+          parameters: %{
+            type: "object",
+            properties: %{
+              description: %{
+                type: "string",
+                description: "Description of the task (e.g., 'Schedule meeting with Sara Smith')"
+              },
+              context: %{
+                type: "object",
+                description: "Any relevant context for the task (e.g., contact email, available times)"
+              }
+            },
+            required: ["description"]
+          }
+        }
       }
     ]
   end

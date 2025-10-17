@@ -3,7 +3,7 @@ defmodule AdvisorAgent.ToolExecutor do
   Executes tool calls requested by the AI agent.
   """
 
-  alias AdvisorAgent.{GmailClient, CalendarClient, HubspotClient, Repo}
+  alias AdvisorAgent.{GmailClient, CalendarClient, HubspotClient, Repo, TaskManager}
   require Logger
 
   @doc """
@@ -42,6 +42,9 @@ defmodule AdvisorAgent.ToolExecutor do
 
       "list_ongoing_instructions" ->
         list_ongoing_instructions(user)
+
+      "create_task" ->
+        create_task_tool(arguments, user)
 
       _ ->
         {:error, "Unknown tool: #{tool_name}"}
@@ -222,6 +225,24 @@ defmodule AdvisorAgent.ToolExecutor do
         end)
 
       {:ok, "Active ongoing instructions:\n#{instructions_text}"}
+    end
+  end
+
+  defp create_task_tool(arguments, user) do
+    description = Map.get(arguments, "description")
+    context = Map.get(arguments, "context", %{})
+
+    # Create initial conversation history with the task description
+    conversation_history = [
+      %{"role" => "user", "content" => description}
+    ]
+
+    case TaskManager.create_task(user, description, conversation_history, context) do
+      {:ok, task} ->
+        {:ok, "Task created successfully with ID #{task.id}. The task will continue automatically when new information is available."}
+
+      {:error, error} ->
+        {:error, "Failed to create task: #{inspect(error)}"}
     end
   end
 end
