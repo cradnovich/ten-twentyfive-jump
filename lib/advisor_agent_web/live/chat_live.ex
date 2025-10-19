@@ -167,7 +167,8 @@ defmodule AdvisorAgentWeb.ChatLive do
           Logger.info("LLM requested #{length(tool_calls)} tool call(s)")
 
           # Add assistant message with tool calls to conversation
-          messages = messages ++ [%{"role" => "assistant", "content" => content, "tool_calls" => tool_calls}]
+          assistant_message = %{"role" => "assistant", "content" => content, "tool_calls" => tool_calls}
+          messages = messages ++ [assistant_message]
 
           # Execute each tool call
           tool_results =

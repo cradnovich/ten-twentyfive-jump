@@ -206,7 +206,7 @@ defmodule AdvisorAgent.HubspotClient do
           metadata: metadata
         })
 
-        case Repo.insert(changeset, on_conflict: :nothing) do
+        case Repo.insert(changeset, on_conflict: :nothing, conflict_target: [:metadata]) do
           {:ok, _document} ->
             Logger.info("Stored Hubspot contact: #{contact["id"]}")
           {:error, %Ecto.Changeset{} = changeset} ->
@@ -271,7 +271,7 @@ defmodule AdvisorAgent.HubspotClient do
           metadata: metadata
         })
 
-        case Repo.insert(changeset, on_conflict: :nothing) do
+        case Repo.insert(changeset, on_conflict: :nothing, conflict_target: [:metadata]) do
           {:ok, _document} ->
             Logger.info("Stored Hubspot note: #{note_payload["id"]}")
           {:error, %Ecto.Changeset{} = changeset} ->
