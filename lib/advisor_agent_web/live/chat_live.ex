@@ -221,14 +221,12 @@ defmodule AdvisorAgentWeb.ChatLive do
       <div class="flex flex-col h-screen bg-white">
         <!-- Header -->
         <div class="flex items-center justify-between px-6 py-4 border-b border-gray-200">
-          <h1 class="text-2xl font-semibold text-gray-900">Ask Anything</h1>
-          <div class="flex items-center gap-4">
-            <img src={@current_user.picture} alt={@current_user.name} class="w-8 h-8 rounded-full">
-            <%= if !@current_user.hubspot_access_token do %>
-              <a href="/auth/hubspot" class="text-sm text-orange-600 hover:text-orange-700 font-medium">Connect Hubspot</a>
-            <% end %>
-            <a href="/auth/logout" class="text-sm text-gray-500 hover:text-gray-700">Log out</a>
-          </div>
+          <h1 class="text-xl font-semibold text-gray-900">Ask Anything</h1>
+          <button class="p-2 hover:bg-gray-100 rounded-full">
+            <svg class="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
         </div>
 
         <!-- Tabs -->
@@ -280,15 +278,20 @@ defmodule AdvisorAgentWeb.ChatLive do
 
         <!-- Input Area -->
         <div class="border-t border-gray-200 px-6 py-4">
-          <form phx-submit="send_message">
-            <div class="relative">
-              <textarea
-                class="w-full resize-none rounded-2xl border border-gray-300 px-4 py-3 pr-12 focus:outline-none focus:border-gray-400 text-base"
-                rows="1"
-                placeholder="Ask anything about your meetings..."
-                name="user_message"
-                phx-change="update_user_input"
-              ><%= @user_input %></textarea>
+          <form phx-submit="send_message" class="relative">
+            <textarea
+              class="w-full resize-none rounded-2xl border border-gray-300 px-4 py-3 pr-12 focus:outline-none focus:border-gray-400 text-base"
+              rows="1"
+              placeholder="Ask anything about your meetings..."
+              name="user_message"
+              phx-change="update_user_input"
+            ><%= @user_input %></textarea>
+            <div class="absolute bottom-3 right-3 flex items-center gap-2">
+              <button type="submit" class="p-2 bg-gray-900 hover:bg-gray-800 rounded-full">
+                <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18" />
+                </svg>
+              </button>
             </div>
           </form>
 
@@ -312,9 +315,9 @@ defmodule AdvisorAgentWeb.ChatLive do
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.344 6.344a1 1 0 01-1.414 0l-2.828-2.828a1 1 0 010-1.414l6.344-6.344a1 1 0 011.414 0l2.828 2.828a1 1 0 010 1.414z" />
                 </svg>
               </button>
-              <button type="submit" form="send_message" class="p-2 bg-gray-900 hover:bg-gray-800 rounded-full">
-                <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18" />
+              <button class="p-2 hover:bg-gray-100 rounded-full">
+                <svg class="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-14 0m7 10v-3" />
                 </svg>
               </button>
               <button class="p-2 hover:bg-gray-100 rounded-full">
