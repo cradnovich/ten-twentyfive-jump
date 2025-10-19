@@ -217,115 +217,126 @@ defmodule AdvisorAgentWeb.ChatLive do
 
   def render(assigns) do
     ~H"""
-    <div class="max-w-3xl mx-auto my-12 bg-white rounded-lg shadow-md">
-      <div class="p-6 border-b border-gray-200">
-        <div class="flex justify-between items-center">
-          <h1 class="text-2xl font-semibold text-gray-800">Ask Anything</h1>
-          <div>
-            <%= if @current_user do %>
-              <div class="flex items-center">
-                <img src={@current_user.picture} alt={@current_user.name} class="w-8 h-8 rounded-full mr-2">
-                <span class="text-sm font-semibold text-gray-800"><%= @current_user.name %></span>
-                <%= if !@current_user.hubspot_access_token do %>
-                  <a href="/auth/hubspot" class="ml-4 px-4 py-2 text-sm font-semibold text-white bg-orange-500 hover:bg-orange-600 rounded-md">Connect to Hubspot</a>
-                <% end %>
-                <a href="/auth/logout" class="ml-4 text-sm font-semibold text-gray-500 hover:text-gray-700">Log out</a>
-              </div>
-            <% else %>
-              <a href="/auth/google" class="px-4 py-2 text-sm font-semibold text-white bg-blue-500 hover:bg-blue-600 rounded-md">Log in with Google</a>
+    <%= if @current_user do %>
+      <div class="flex flex-col h-screen bg-white">
+        <!-- Header -->
+        <div class="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+          <h1 class="text-2xl font-semibold text-gray-900">Ask Anything</h1>
+          <div class="flex items-center gap-4">
+            <img src={@current_user.picture} alt={@current_user.name} class="w-8 h-8 rounded-full">
+            <%= if !@current_user.hubspot_access_token do %>
+              <a href="/auth/hubspot" class="text-sm text-orange-600 hover:text-orange-700 font-medium">Connect Hubspot</a>
             <% end %>
+            <a href="/auth/logout" class="text-sm text-gray-500 hover:text-gray-700">Log out</a>
           </div>
         </div>
-        <div class="mt-4 flex items-center justify-between">
-          <div class="flex items-center">
-            <button class="px-4 py-2 text-sm font-semibold text-gray-800 bg-gray-200 rounded-md">Chat</button>
-            <button class="ml-2 px-4 py-2 text-sm font-semibold text-gray-500 hover:bg-gray-200 rounded-md">History</button>
+
+        <!-- Tabs -->
+        <div class="flex items-center justify-between px-6 py-3 border-b border-gray-200">
+          <div class="flex items-center gap-6">
+            <button class="text-sm font-medium text-gray-900 border-b-2 border-gray-900 pb-1">Chat</button>
+            <button class="text-sm font-medium text-gray-500 hover:text-gray-900 pb-1">History</button>
           </div>
-          <button class="flex items-center px-4 py-2 text-sm font-semibold text-gray-800 hover:bg-gray-200 rounded-md">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <button class="flex items-center gap-2 text-sm font-medium text-gray-700 hover:text-gray-900">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
             </svg>
             New thread
           </button>
         </div>
-      </div>
 
-      <div class="p-6">
-        <%= if @current_user do %>
-          <div class="text-sm text-gray-500 text-center">
-            <p>Context set to all meetings</p>
-            <p>11:17am – May 13, 2025</p>
+        <!-- Chat Area -->
+        <div class="flex-1 overflow-y-auto px-6 py-6">
+          <!-- Context Info -->
+          <div class="text-center mb-8">
+            <p class="text-sm text-gray-500">Context set to all meetings</p>
+            <p class="text-xs text-gray-400">11:17am – May 13, 2025</p>
           </div>
 
-          <div class="mt-6">
-            <p class="text-gray-700">
+          <!-- Initial Message -->
+          <div class="mb-6">
+            <p class="text-gray-900 text-base">
               I can answer questions about any Jump meeting. What do you want to know?
             </p>
           </div>
 
+          <!-- Messages -->
           <%= for message <- @messages do %>
-            <div class={[
-              "mt-6 flex",
-              if(message.sender == :user, do: "justify-end", else: "justify-start")
-            ]}>
-              <div class={[
-                "rounded-lg p-4 max-w-lg",
-                if(message.sender == :user, do: "bg-blue-500 text-white", else: "bg-gray-200 text-gray-800")
-              ]}>
-                {message.text}
+            <%= if message.sender == :user do %>
+              <div class="flex justify-end mb-6">
+                <div class="bg-gray-100 rounded-2xl px-5 py-3 max-w-lg">
+                  <p class="text-gray-900 text-base"><%= message.text %></p>
+                </div>
               </div>
-            </div>
+            <% else %>
+              <div class="mb-6">
+                <div class="text-gray-900 text-base max-w-2xl">
+                  <%= message.text %>
+                </div>
+              </div>
+            <% end %>
           <% end %>
+        </div>
 
-        <% else %>
-          <div class="text-center">
-            <h2 class="text-xl font-semibold text-gray-800 mb-4">Please log in to view the chat.</h2>
-          </div>
-        <% end %>
-      </div>
+        <!-- Input Area -->
+        <div class="border-t border-gray-200 px-6 py-4">
+          <form phx-submit="send_message">
+            <div class="relative">
+              <textarea
+                class="w-full resize-none rounded-2xl border border-gray-300 px-4 py-3 pr-12 focus:outline-none focus:border-gray-400 text-base"
+                rows="1"
+                placeholder="Ask anything about your meetings..."
+                name="user_message"
+                phx-change="update_user_input"
+              ><%= @user_input %></textarea>
+            </div>
+          </form>
 
-      <div class="p-6 bg-gray-50 border-t border-gray-200 rounded-b-lg">
-        <form phx-submit="send_message">
-          <div class="flex items-center">
-            <textarea
-              class="w-full px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              rows="1"
-              placeholder="Ask anything about your meetings..."
-              name="user_message"
-              value={@user_input}
-              phx-change="update_user_input"
-            ></textarea>
-            <button type="submit" class="ml-2 px-4 py-2 text-sm font-semibold text-white bg-blue-500 hover:bg-blue-600 rounded-md">Send</button>
+          <div class="flex items-center justify-between mt-3">
+            <div class="flex items-center gap-2">
+              <button class="p-2 hover:bg-gray-100 rounded-full">
+                <svg class="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                </svg>
+              </button>
+              <button class="flex items-center gap-1 px-3 py-1.5 text-sm border border-gray-300 rounded-full hover:bg-gray-50">
+                <span>All meetings</span>
+                <svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+            </div>
+            <div class="flex items-center gap-2">
+              <button class="p-2 hover:bg-gray-100 rounded-full">
+                <svg class="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.344 6.344a1 1 0 01-1.414 0l-2.828-2.828a1 1 0 010-1.414l6.344-6.344a1 1 0 011.414 0l2.828 2.828a1 1 0 010 1.414z" />
+                </svg>
+              </button>
+              <button type="submit" form="send_message" class="p-2 bg-gray-900 hover:bg-gray-800 rounded-full">
+                <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18" />
+                </svg>
+              </button>
+              <button class="p-2 hover:bg-gray-100 rounded-full">
+                <svg class="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-14 0m7 10v-3" />
+                </svg>
+              </button>
+            </div>
           </div>
-        </form>
-        <div class="mt-2 flex justify-between items-center">
-            <div class="flex items-center">
-                <button class="flex items-center px-3 py-2 text-sm font-semibold text-gray-800 hover:bg-gray-200 rounded-md">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-                    </svg>
-                </button>
-                <button class="ml-2 flex items-center px-3 py-2 text-sm font-semibold text-gray-800 border border-gray-300 rounded-md">
-                    All meetings
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-                    </svg>
-                </button>
-            </div>
-            <div class="flex items-center">
-                <button class="text-gray-500 hover:text-gray-700 p-2 rounded-full">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l-7-7 7-7 7 7-7 7zm0 0v-8" /></svg>
-                </button>
-                <button class="text-gray-500 hover:text-gray-700 p-2 rounded-full ml-2">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.344 6.344a1 1 0 01-1.414 0l-2.828-2.828a1 1 0 010-1.414l6.344-6.344a1 1 0 011.414 0l2.828 2.828a1 1 0 010 1.414z" /></svg>
-                </button>
-                <button class="text-gray-500 hover:text-gray-700 p-2 rounded-full ml-2">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-14 0m7 10v-3" /></svg>
-                </button>
-            </div>
         </div>
       </div>
-    </div>
+    <% else %>
+      <!-- Login Screen -->
+      <div class="flex items-center justify-center h-screen bg-gray-50">
+        <div class="text-center">
+          <h1 class="text-3xl font-semibold text-gray-900 mb-6">Welcome to Ask Anything</h1>
+          <a href="/auth/google" class="inline-block px-6 py-3 text-base font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg">
+            Log in with Google
+          </a>
+        </div>
+      </div>
+    <% end %>
     """
   end
 end
