@@ -79,4 +79,9 @@ config :ueberauth, Ueberauth.Strategy.Hubspot.OAuth,
 config :ueberauth_hubspot,
   base_api_url: "https://api.hubapi.com"
 
+# Configure OpenAI
+config :openai,
+  api_key: System.get_env("OPENAI_API_KEY"),
+  organization_key: System.get_env("OPENAI_ORGANIZATION_KEY")
+
 import_config "#{config_env()}.exs"
