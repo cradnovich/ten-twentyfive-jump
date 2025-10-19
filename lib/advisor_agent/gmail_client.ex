@@ -64,6 +64,10 @@ defmodule AdvisorAgent.GmailClient do
       {:ok, %Req.Response{status: 200, body: %{}}} ->
         {:ok, []}
 
+      {:ok, %Req.Response{status: 400, body: %{"error" => %{"message" => "Mail service not enabled"}}}} ->
+        Logger.warning("Gmail service not enabled for this account")
+        {:error, :gmail_not_enabled}
+
       {:ok, %Req.Response{status: status, body: body}} ->
         Logger.error("Failed to search emails: Status #{status}, Body: #{inspect(body)}")
         {:error, :failed_to_search_emails}

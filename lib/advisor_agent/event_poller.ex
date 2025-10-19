@@ -75,6 +75,10 @@ defmodule AdvisorAgent.EventPoller do
         # No new emails
         :ok
 
+      {:error, :gmail_not_enabled} ->
+        # Gmail not enabled for this account, just skip silently
+        :ok
+
       {:error, error} ->
         Logger.error("Failed to poll Gmail for user #{user.id}: #{inspect(error)}")
         :error
