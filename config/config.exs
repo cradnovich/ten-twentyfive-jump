@@ -69,4 +69,8 @@ config :ueberauth, Ueberauth,
     ]}
   ]
 
+config :ueberauth, Ueberauth.Strategy.Hubspot.OAuth,
+  client_id: System.get_env("HUBSPOT_CLIENT_ID"),
+  client_secret: System.get_env("HUBSPOT_CLIENT_SECRET")
+
 import_config "#{config_env()}.exs"
