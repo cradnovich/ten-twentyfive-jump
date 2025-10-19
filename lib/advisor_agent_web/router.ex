@@ -24,9 +24,9 @@ defmodule AdvisorAgentWeb.Router do
   scope "/auth", AdvisorAgentWeb do
     pipe_through :browser
 
+    get "/logout", AuthController, :delete
     get "/:provider", AuthController, :request
     get "/:provider/callback", AuthController, :callback
-    get "/logout", AuthController, :delete
   end
 
   # Other scopes may use custom stacks.
