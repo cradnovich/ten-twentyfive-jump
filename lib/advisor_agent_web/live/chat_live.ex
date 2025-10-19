@@ -1,7 +1,7 @@
 defmodule AdvisorAgentWeb.ChatLive do
   use AdvisorAgentWeb, :live_view
 
-  alias AdvisorAgent.{GmailClient, HubspotClient, OpenAIClient, Repo, Tools, ToolExecutor, User}
+  alias AdvisorAgent.{GmailClient, HubspotClient, NomicClient, Repo, Tools, ToolExecutor, User}
   require Logger
 
   def mount(_params, session, socket) do
@@ -76,7 +76,7 @@ defmodule AdvisorAgentWeb.ChatLive do
   defp process_message_with_tools(user_message, current_user) do
     # Generate embedding and get RAG context
     {context, _rag_error} =
-      case OpenAIClient.generate_embedding(user_message) do
+      case NomicClient.generate_embedding(user_message) do
         {:ok, query_embedding} ->
           relevant_documents = Repo.search_documents(query_embedding)
           context_text = Enum.map_join(relevant_documents, "\n", fn doc -> doc.content end)

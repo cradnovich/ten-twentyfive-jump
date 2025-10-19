@@ -5,7 +5,7 @@ defmodule AdvisorAgent.GmailClient do
 
   alias AdvisorAgent.Repo
   alias AdvisorAgent.Document
-  alias AdvisorAgent.OpenAIClient
+  alias AdvisorAgent.NomicClient
   require Logger
 
   @gmail_api_base_url "https://www.googleapis.com/gmail/v1/users/me"
@@ -172,7 +172,7 @@ defmodule AdvisorAgent.GmailClient do
     # For simplicity, let's just take the snippet for now
     content = message_payload["snippet"]
 
-    case OpenAIClient.generate_embedding(content) do
+    case NomicClient.generate_embedding(content) do
       {:ok, embedding} ->
         metadata = %{
           "user_id" => user_id,
@@ -196,9 +196,9 @@ defmodule AdvisorAgent.GmailClient do
             Logger.error("Failed to store email document: #{inspect(changeset.errors)}")
         end
 
-      {:error, %{"error" => %{"type" => "invalid_request_error", "message" => message}}} ->
+      {:error, %{"error" => %{"type" => "missing_api_key", "message" => message}}} ->
         if is_binary(message) and String.contains?(message, "API key") do
-          Logger.warning("OpenAI API key not configured, skipping embedding generation for email: #{message_payload["id"]}")
+          Logger.warning("Nomic API key not configured, skipping embedding generation for email: #{message_payload["id"]}")
         else
           Logger.error("Failed to generate embedding for email: #{inspect(%{"error" => %{"type" => "invalid_request_error", "message" => message}})}")
         end

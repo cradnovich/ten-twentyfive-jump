@@ -79,9 +79,13 @@ config :ueberauth, Ueberauth.Strategy.Hubspot.OAuth,
 config :ueberauth_hubspot,
   base_api_url: "https://api.hubapi.com"
 
-# Configure OpenAI
+# Configure OpenAI (for chat completions)
 config :openai,
   api_key: System.get_env("OPENAI_API_KEY"),
   organization_key: System.get_env("OPENAI_ORGANIZATION_KEY")
+
+# Configure Nomic (for embeddings)
+config :advisor_agent,
+  nomic_api_key: System.get_env("NOMIC_API_KEY")
 
 import_config "#{config_env()}.exs"
