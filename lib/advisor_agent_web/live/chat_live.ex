@@ -156,8 +156,8 @@ defmodule AdvisorAgentWeb.ChatLive do
 
       # Call OpenAI with tools
       case call_openai_with_tools(messages, tools) do
-        {:ok, %{"role" => "assistant", "content" => content, "tool_calls" => nil}}
-        when not is_nil(content) ->
+        {:ok, %{"role" => "assistant", "content" => content, "tool_calls" => tool_calls}}
+        when is_nil(tool_calls) and not is_nil(content) ->
           # No tool calls, we have the final response
           {:ok, content}
 
