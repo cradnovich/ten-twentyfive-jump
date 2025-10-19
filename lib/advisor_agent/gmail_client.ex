@@ -189,7 +189,7 @@ defmodule AdvisorAgent.GmailClient do
           metadata: metadata
         })
 
-        case Repo.insert(changeset) do
+        case Repo.insert(changeset, on_conflict: :nothing) do
           {:ok, _document} ->
             Logger.info("Stored email document: #{message_payload["id"]}")
           {:error, %Ecto.Changeset{} = changeset} ->
