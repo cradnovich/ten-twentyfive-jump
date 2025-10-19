@@ -78,8 +78,8 @@ defmodule AdvisorAgentWeb.ChatLive do
     {context, _rag_error} =
       case NomicClient.generate_embedding(user_message) do
         {:ok, query_embedding} ->
-          relevant_documents = Repo.search_documents(query_embedding)
-          context_text = Enum.map_join(relevant_documents, "\n", fn doc -> doc.content end)
+          relevant_documents = Repo.search_documents(query_embedding, 10)
+          context_text = format_context_with_metadata(relevant_documents)
           {context_text, nil}
 
         {:error, error} ->
@@ -220,6 +220,31 @@ defmodule AdvisorAgentWeb.ChatLive do
       {:error, error} ->
         {:error, error}
     end
+  end
+
+  defp format_context_with_metadata(documents) when documents == [], do: ""
+
+  defp format_context_with_metadata(documents) do
+    documents
+    |> Enum.with_index(1)
+    |> Enum.map_join("\n\n", fn {doc, index} ->
+      source_type = doc.metadata["source"]
+
+      header = case source_type do
+        "gmail" ->
+          "[Email #{index}]"
+        "hubspot_contact" ->
+          name = "#{doc.metadata["firstname"]} #{doc.metadata["lastname"]}"
+          email = doc.metadata["email"]
+          "[Contact #{index}: #{name} (#{email})]"
+        "hubspot_note" ->
+          "[Note #{index}]"
+        _ ->
+          "[Document #{index}]"
+      end
+
+      "#{header}\n#{doc.content}"
+    end)
   end
 
   def render(assigns) do
