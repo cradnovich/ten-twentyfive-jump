@@ -60,7 +60,9 @@ config :ueberauth, Ueberauth,
       client_id: System.get_env("GOOGLE_CLIENT_ID"),
       client_secret: System.get_env("GOOGLE_CLIENT_SECRET"),
       default_scope: "email profile https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/calendar.events",
-      redirect_uri: "http://localhost:4000/auth/google/callback"
+      redirect_uri: "http://localhost:4000/auth/google/callback",
+      access_type: "offline",
+      prompt: "consent"
     ]},
     hubspot: {Ueberauth.Strategy.Hubspot, [
       client_id: System.get_env("HUBSPOT_CLIENT_ID"),
