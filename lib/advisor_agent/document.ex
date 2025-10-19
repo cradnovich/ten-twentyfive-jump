@@ -4,7 +4,7 @@ defmodule AdvisorAgent.Document do
 
   schema "documents" do
     field :content, :string
-    field :embedding, {:array, :float}
+    field :embedding, Pgvector.Ecto.Vector
     field :metadata, :map
 
     timestamps()
