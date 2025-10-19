@@ -69,6 +69,7 @@ defmodule AdvisorAgent.MixProject do
       {:ueberauth_hubspot, path: "../../ueberauth_hubspot"},
       {:openai, "~> 0.4"},
       {:req, "~> 0.5"},
+      {:pgvector, "~> 0.3"}
       # Nomic Embed API client will use :req
     ]
   end
