@@ -65,7 +65,7 @@ config :ueberauth, Ueberauth,
     hubspot: {Ueberauth.Strategy.Hubspot, [
       client_id: System.get_env("HUBSPOT_CLIENT_ID"),
       client_secret: System.get_env("HUBSPOT_CLIENT_SECRET"),
-      default_scope: "crm.objects.contacts.read crm.objects.contacts.write crm.schemas.contacts.read crm.schemas.contacts.write crm.objects.notes.read crm.objects.notes.write oauth"
+      default_scope: "crm.objects.contacts.read crm.objects.contacts.write oauth"
     ]}
   ]
 
