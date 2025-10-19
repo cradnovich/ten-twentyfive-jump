@@ -65,7 +65,8 @@ config :ueberauth, Ueberauth,
     hubspot: {Ueberauth.Strategy.Hubspot, [
       client_id: System.get_env("HUBSPOT_CLIENT_ID"),
       client_secret: System.get_env("HUBSPOT_CLIENT_SECRET"),
-      scope: "crm.objects.contacts.read crm.objects.contacts.write oauth"
+      scope: "crm.objects.contacts.read crm.objects.contacts.write oauth",
+      redirect_uri: "http://localhost:4000/auth/hubspot/callback"
     ]}
   ]
 
