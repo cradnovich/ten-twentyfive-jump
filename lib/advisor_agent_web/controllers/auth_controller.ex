@@ -1,7 +1,13 @@
 defmodule AdvisorAgentWeb.AuthController do
   use AdvisorAgentWeb, :controller
+  plug Ueberauth
 
   alias AdvisorAgent.{Repo, User}
+
+  def request(conn, _params) do
+    # Ueberauth handles this via the plug
+    conn
+  end
 
   def callback(conn, %{"provider" => "google"}) do
     auth = conn.assigns.ueberauth_auth

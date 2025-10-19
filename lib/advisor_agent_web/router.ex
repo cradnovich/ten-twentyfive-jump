@@ -9,7 +9,6 @@ defmodule AdvisorAgentWeb.Router do
     plug :protect_from_forgery
     plug :put_secure_browser_headers
     plug AdvisorAgentWeb.Plugs.SetCurrentUser
-    plug Ueberauth
   end
 
   pipeline :api do
@@ -25,8 +24,8 @@ defmodule AdvisorAgentWeb.Router do
   scope "/auth", AdvisorAgentWeb do
     pipe_through :browser
 
-    get "/google/callback", AuthController, :callback
-    get "/hubspot/callback", AuthController, :callback
+    get "/:provider", AuthController, :request
+    get "/:provider/callback", AuthController, :callback
     get "/logout", AuthController, :delete
   end
 
