@@ -65,12 +65,15 @@ config :ueberauth, Ueberauth,
     hubspot: {Ueberauth.Strategy.Hubspot, [
       client_id: System.get_env("HUBSPOT_CLIENT_ID"),
       client_secret: System.get_env("HUBSPOT_CLIENT_SECRET"),
-      default_scope: "crm.objects.contacts.read crm.objects.contacts.write oauth"
+      scope: "crm.objects.contacts.read crm.objects.contacts.write oauth"
     ]}
   ]
 
 config :ueberauth, Ueberauth.Strategy.Hubspot.OAuth,
   client_id: System.get_env("HUBSPOT_CLIENT_ID"),
   client_secret: System.get_env("HUBSPOT_CLIENT_SECRET")
+
+config :ueberauth_hubspot,
+  base_api_url: "https://api.hubapi.com"
 
 import_config "#{config_env()}.exs"
