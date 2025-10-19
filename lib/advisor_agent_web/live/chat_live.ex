@@ -209,17 +209,37 @@ defmodule AdvisorAgentWeb.ChatLive do
   end
 
   defp call_openai_with_tools(messages, tools) do
-    case OpenAI.chat_completion(
-           model: "gpt-4-turbo-preview",
-           messages: messages,
-           tools: tools,
-           tool_choice: "auto"
-         ) do
+    # Log the parameters being sent to OpenAI
+    Logger.info("=== Calling OpenAI with the following parameters ===")
+    Logger.info("Model: gpt-4-turbo-preview")
+    Logger.info("Messages: #{inspect(messages, pretty: true, limit: :infinity)}")
+    Logger.info("Tools: #{inspect(tools, pretty: true, limit: :infinity)}")
+    Logger.info("Tool choice: auto")
+    Logger.info("=== End of OpenAI parameters ===")
+
+    result = OpenAI.chat_completion(
+      model: "gpt-4-turbo-preview",
+      messages: messages,
+      tools: tools,
+      tool_choice: "auto"
+    )
+
+    # Log the raw response from OpenAI
+    Logger.info("=== OpenAI raw response ===")
+    Logger.info("#{inspect(result, pretty: true, limit: :infinity)}")
+    Logger.info("=== End of OpenAI raw response ===")
+
+    case result do
       {:ok, %{choices: [%{"message" => message} | _]}} ->
+        Logger.info("Successfully extracted message from OpenAI response")
         {:ok, message}
 
+      {:ok, response} ->
+        Logger.error("OpenAI response did not match expected pattern. Response: #{inspect(response, pretty: true)}")
+        {:error, "Unexpected response format from OpenAI"}
+
       {:error, error} ->
-        Logger.error("OpenAI API error: #{inspect(error)}")
+        Logger.error("OpenAI API error: #{inspect(error, pretty: true)}")
         {:error, error}
     end
   end
