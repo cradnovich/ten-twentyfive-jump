@@ -14,10 +14,8 @@ defmodule AdvisorAgentWeb.ChatLive do
       end
 
     if current_user && current_user.google_access_token do
-      user_id = current_user.email
-
       Task.start(fn ->
-        GmailClient.fetch_and_store_emails(user_id, current_user.google_access_token)
+        GmailClient.fetch_and_store_emails_incremental(current_user, current_user.google_access_token)
       end)
     end
 
