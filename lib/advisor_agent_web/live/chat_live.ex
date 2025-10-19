@@ -224,6 +224,15 @@ defmodule AdvisorAgentWeb.ChatLive do
           <h1 class="text-xl font-semibold text-gray-900">Ask Anything</h1>
           <div class="flex items-center gap-4">
             <span class="text-sm text-gray-600"><%= @current_user.email %></span>
+            <%= if @current_user.hubspot_access_token do %>
+              <span class="px-3 py-1.5 text-xs font-medium text-green-700 bg-green-100 rounded-full">
+                Hubspot Connected
+              </span>
+            <% else %>
+              <a href="/auth/hubspot" class="px-4 py-2 text-sm font-medium text-white bg-orange-600 hover:bg-orange-700 rounded-lg">
+                Connect Hubspot
+              </a>
+            <% end %>
             <a href="/auth/logout" class="px-4 py-2 text-sm font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-lg">
               Logout
             </a>
