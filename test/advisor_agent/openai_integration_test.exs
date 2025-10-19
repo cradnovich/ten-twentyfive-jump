@@ -117,7 +117,7 @@ defmodule AdvisorAgent.OpenAIIntegrationTest do
     # Log the parameters being sent to OpenAI
     IO.puts("\n" <> String.duplicate("=", 80))
     IO.puts("=== Calling OpenAI with the following parameters ===")
-    IO.puts("Model: gpt-4-turbo-preview")
+    IO.puts("Model: gpt-3.5-turbo")
     IO.puts("\nMessages:")
     IO.inspect(messages, pretty: true, limit: :infinity)
     IO.puts("\nTools (#{length(tools)} total):")
@@ -127,7 +127,7 @@ defmodule AdvisorAgent.OpenAIIntegrationTest do
     IO.puts(String.duplicate("=", 80) <> "\n")
 
     result = OpenAI.chat_completion(
-      model: "gpt-4-turbo-preview",
+      model: "gpt-3.5-turbo",
       messages: messages,
       tools: tools,
       tool_choice: "auto"

@@ -195,7 +195,7 @@ defmodule AdvisorAgent.ProactiveAgent do
 
   defp call_openai_with_tools(messages, tools) do
     case OpenAI.chat_completion(
-           model: "gpt-4-turbo-preview",
+           model: "gpt-3.5-turbo",
            messages: messages,
            tools: tools,
            tool_choice: "auto"

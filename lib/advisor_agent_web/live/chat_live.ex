@@ -211,14 +211,14 @@ defmodule AdvisorAgentWeb.ChatLive do
   defp call_openai_with_tools(messages, tools) do
     # Log the parameters being sent to OpenAI
     Logger.info("=== Calling OpenAI with the following parameters ===")
-    Logger.info("Model: gpt-4-turbo-preview")
+    Logger.info("Model: gpt-3.5-turbo")
     Logger.info("Messages: #{inspect(messages, pretty: true, limit: :infinity)}")
     Logger.info("Tools: #{inspect(tools, pretty: true, limit: :infinity)}")
     Logger.info("Tool choice: auto")
     Logger.info("=== End of OpenAI parameters ===")
 
     result = OpenAI.chat_completion(
-      model: "gpt-4-turbo-preview",
+      model: "gpt-3.5-turbo",
       messages: messages,
       tools: tools,
       tool_choice: "auto"
