@@ -31,7 +31,17 @@ defmodule AdvisorAgentWeb.ChatLive do
     {:ok,
      assign(socket, :messages, [])
      |> assign(:current_user, current_user)
-     |> assign(:user_input, "")}
+     |> assign(:user_input, "")
+     |> assign(:active_tab, :chat)
+     |> assign(:thread_started_at, DateTime.utc_now())}
+  end
+
+  def handle_event("switch_tab", %{"tab" => tab}, socket) do
+    {:noreply, assign(socket, :active_tab, String.to_atom(tab))}
+  end
+
+  def handle_event("update_user_input", %{"user_message" => value}, socket) do
+    {:noreply, assign(socket, :user_input, value)}
   end
 
   def handle_event("send_message", %{"user_message" => user_message}, socket) do
@@ -61,10 +71,6 @@ defmodule AdvisorAgentWeb.ChatLive do
 
       {:noreply, socket}
     end
-  end
-
-  def handle_event("update_user_input", %{"value" => value}, socket) do
-    {:noreply, assign(socket, :user_input, value)}
   end
 
   defp process_message_with_tools(user_message, current_user) do
@@ -242,8 +248,18 @@ defmodule AdvisorAgentWeb.ChatLive do
         <!-- Tabs -->
         <div class="flex items-center justify-between px-6 py-3 border-b border-gray-200">
           <div class="flex items-center gap-6">
-            <button class="text-sm font-medium text-gray-900 border-b-2 border-gray-900 pb-1">Chat</button>
-            <button class="text-sm font-medium text-gray-500 hover:text-gray-900 pb-1">History</button>
+            <button
+              phx-click="switch_tab"
+              phx-value-tab="chat"
+              class={"text-sm font-medium pb-1 #{if @active_tab == :chat, do: "text-gray-900 border-b-2 border-gray-900", else: "text-gray-500 hover:text-gray-900"}"}>
+              Chat
+            </button>
+            <button
+              phx-click="switch_tab"
+              phx-value-tab="history"
+              class={"text-sm font-medium pb-1 #{if @active_tab == :history, do: "text-gray-900 border-b-2 border-gray-900", else: "text-gray-500 hover:text-gray-900"}"}>
+              History
+            </button>
           </div>
           <button class="flex items-center gap-2 text-sm font-medium text-gray-700 hover:text-gray-900">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -253,13 +269,13 @@ defmodule AdvisorAgentWeb.ChatLive do
           </button>
         </div>
 
-        <!-- Chat Area -->
-        <div class="flex-1 overflow-y-auto px-6 py-6">
-          <!-- Context Info -->
-          <div class="text-center mb-8">
-            <p class="text-sm text-gray-500">Context set to all meetings</p>
-            <p class="text-xs text-gray-400">11:17am – May 13, 2025</p>
-          </div>
+        <%= if @active_tab == :chat do %>
+          <!-- Chat Area -->
+          <div class="flex-1 overflow-y-auto px-6 py-6">
+            <!-- Thread Start Time -->
+            <div class="text-center mb-8">
+              <p class="text-xs text-gray-400"><%= Calendar.strftime(@thread_started_at, "%I:%M%P – %B %d, %Y") %></p>
+            </div>
 
           <!-- Initial Message -->
           <div class="mb-6">
@@ -268,23 +284,32 @@ defmodule AdvisorAgentWeb.ChatLive do
             </p>
           </div>
 
-          <!-- Messages -->
-          <%= for message <- @messages do %>
-            <%= if message.sender == :user do %>
-              <div class="flex justify-end mb-6">
-                <div class="bg-gray-100 rounded-2xl px-5 py-3 max-w-lg">
-                  <p class="text-gray-900 text-base"><%= message.text %></p>
+            <!-- Messages -->
+            <%= for message <- @messages do %>
+              <%= if message.sender == :user do %>
+                <div class="flex justify-end mb-6">
+                  <div class="bg-gray-100 rounded-2xl px-5 py-3 max-w-lg">
+                    <p class="text-gray-900 text-base"><%= message.text %></p>
+                  </div>
                 </div>
-              </div>
-            <% else %>
-              <div class="mb-6">
-                <div class="text-gray-900 text-base max-w-2xl">
-                  <%= message.text %>
+              <% else %>
+                <div class="mb-6">
+                  <div class="text-gray-900 text-base max-w-2xl">
+                    <%= message.text %>
+                  </div>
                 </div>
-              </div>
+              <% end %>
             <% end %>
-          <% end %>
-        </div>
+          </div>
+        <% else %>
+          <!-- History Area -->
+          <div class="flex-1 overflow-y-auto px-6 py-6">
+            <div class="text-center py-12">
+              <p class="text-gray-500 text-base">No previous chat threads</p>
+              <p class="text-gray-400 text-sm mt-2">Your chat history will appear here</p>
+            </div>
+          </div>
+        <% end %>
 
         <!-- Input Area -->
         <div class="border-t border-gray-200 px-6 py-4">
