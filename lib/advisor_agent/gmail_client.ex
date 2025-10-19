@@ -195,8 +195,13 @@ defmodule AdvisorAgent.GmailClient do
           {:error, %Ecto.Changeset{} = changeset} ->
             Logger.error("Failed to store email document: #{inspect(changeset.errors)}")
         end
-      {:error, %{"error" => %{"type" => "invalid_request_error", "message" => message}}} when is_binary(message) and message =~ "API key" ->
-        Logger.warning("OpenAI API key not configured, skipping embedding generation for email: #{message_payload["id"]}")
+
+      {:error, %{"error" => %{"type" => "invalid_request_error", "message" => message}}} ->
+        if is_binary(message) and String.contains?(message, "API key") do
+          Logger.warning("OpenAI API key not configured, skipping embedding generation for email: #{message_payload["id"]}")
+        else
+          Logger.error("Failed to generate embedding for email: #{inspect(%{"error" => %{"type" => "invalid_request_error", "message" => message}})}")
+        end
 
       {:error, error} ->
         Logger.error("Failed to generate embedding for email: #{inspect(error)}")
