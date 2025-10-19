@@ -152,13 +152,13 @@ defmodule AdvisorAgent.GmailClient do
   defp extract_body(payload) do
     cond do
       payload["body"]["data"] ->
-        Base.decode64!(payload["body"]["data"], padding: false)
+        Base.url_decode64!(payload["body"]["data"], padding: false)
 
       payload["parts"] ->
         payload["parts"]
         |> Enum.find(fn part -> part["mimeType"] == "text/plain" end)
         |> case do
-          %{"body" => %{"data" => data}} -> Base.decode64!(data, padding: false)
+          %{"body" => %{"data" => data}} -> Base.url_decode64!(data, padding: false)
           _ -> ""
         end
 
@@ -195,6 +195,9 @@ defmodule AdvisorAgent.GmailClient do
           {:error, %Ecto.Changeset{} = changeset} ->
             Logger.error("Failed to store email document: #{inspect(changeset.errors)}")
         end
+      {:error, %{"error" => %{"type" => "invalid_request_error", "message" => message}}} when is_binary(message) and message =~ "API key" ->
+        Logger.warning("OpenAI API key not configured, skipping embedding generation for email: #{message_payload["id"]}")
+
       {:error, error} ->
         Logger.error("Failed to generate embedding for email: #{inspect(error)}")
     end
