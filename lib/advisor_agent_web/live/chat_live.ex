@@ -222,11 +222,12 @@ defmodule AdvisorAgentWeb.ChatLive do
         <!-- Header -->
         <div class="flex items-center justify-between px-6 py-4 border-b border-gray-200">
           <h1 class="text-xl font-semibold text-gray-900">Ask Anything</h1>
-          <button class="p-2 hover:bg-gray-100 rounded-full">
-            <svg class="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
+          <div class="flex items-center gap-4">
+            <span class="text-sm text-gray-600"><%= @current_user.email %></span>
+            <a href="/auth/logout" class="px-4 py-2 text-sm font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-lg">
+              Logout
+            </a>
+          </div>
         </div>
 
         <!-- Tabs -->
