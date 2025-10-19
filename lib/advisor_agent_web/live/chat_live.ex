@@ -315,11 +315,12 @@ defmodule AdvisorAgentWeb.ChatLive do
         <div class="border-t border-gray-200 px-6 py-4">
           <form phx-submit="send_message" class="relative">
             <textarea
-              class="w-full resize-none rounded-2xl border border-gray-300 px-4 py-3 pr-12 focus:outline-none focus:border-gray-400 text-base"
+              class="w-full resize-none rounded-2xl border border-gray-300 px-4 py-3 pr-12 focus:outline-none focus:border-gray-400 text-base text-gray-900 placeholder-gray-400"
               rows="1"
               placeholder="Ask anything about your meetings..."
               name="user_message"
               phx-change="update_user_input"
+              value={@user_input}
             ><%= @user_input %></textarea>
             <div class="absolute bottom-3 right-3 flex items-center gap-2">
               <button type="submit" class="p-2 bg-gray-900 hover:bg-gray-800 rounded-full">
