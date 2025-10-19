@@ -1,11 +1,16 @@
 defmodule AdvisorAgentWeb.ChatLive do
   use AdvisorAgentWeb, :live_view
 
-  alias AdvisorAgent.{GmailClient, HubspotClient, OpenAIClient, Repo, Tools, ToolExecutor}
+  alias AdvisorAgent.{GmailClient, HubspotClient, OpenAIClient, Repo, Tools, ToolExecutor, User}
   require Logger
 
-  def mount(_params, _session, socket) do
-    current_user = socket.assigns[:current_user]
+  def mount(_params, session, socket) do
+    # Load user from session
+    current_user =
+      case session["user_id"] do
+        nil -> nil
+        user_id -> Repo.get(User, user_id)
+      end
 
     if current_user && current_user.google_access_token do
       user_id = current_user.email
