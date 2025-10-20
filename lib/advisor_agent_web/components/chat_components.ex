@@ -158,7 +158,7 @@ defmodule AdvisorAgentWeb.ChatComponents do
         </div>
       </form>
 
-      <div class="flex items-center justify-between mt-3">
+      <div class="flex items-center mt-3">
         <div class="flex items-center gap-2">
           <button class="p-2 hover:bg-gray-100 rounded-full">
             <svg class="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -169,23 +169,6 @@ defmodule AdvisorAgentWeb.ChatComponents do
             <span>All meetings</span>
             <svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-            </svg>
-          </button>
-        </div>
-        <div class="flex items-center gap-2">
-          <button class="p-2 hover:bg-gray-100 rounded-full">
-            <svg class="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.344 6.344a1 1 0 01-1.414 0l-2.828-2.828a1 1 0 010-1.414l6.344-6.344a1 1 0 011.414 0l2.828 2.828a1 1 0 010 1.414z" />
-            </svg>
-          </button>
-          <button class="p-2 hover:bg-gray-100 rounded-full">
-            <svg class="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-14 0m7 10v-3" />
-            </svg>
-          </button>
-          <button class="p-2 hover:bg-gray-100 rounded-full">
-            <svg class="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-14 0m7 10v-3" />
             </svg>
           </button>
         </div>
