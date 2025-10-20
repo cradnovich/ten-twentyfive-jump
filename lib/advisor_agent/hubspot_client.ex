@@ -5,7 +5,7 @@ defmodule AdvisorAgent.HubspotClient do
 
   alias AdvisorAgent.Repo
   alias AdvisorAgent.Document
-  alias AdvisorAgent.OpenAIClient
+  alias AdvisorAgent.NomicClient
   require Logger
 
   @hubspot_api_base_url "https://api.hubapi.com"
@@ -189,7 +189,7 @@ defmodule AdvisorAgent.HubspotClient do
   defp process_and_store_contact(user_id, contact) do
     content = "Contact: #{contact["properties"]["firstname"]} #{contact["properties"]["lastname"]}. Email: #{contact["properties"]["email"]}"
 
-    case OpenAIClient.generate_embedding(content) do
+    case NomicClient.generate_embedding(content) do
       {:ok, embedding} ->
         metadata = %{
           "user_id" => user_id,
@@ -206,7 +206,7 @@ defmodule AdvisorAgent.HubspotClient do
           metadata: metadata
         })
 
-        case Repo.insert(changeset) do
+        case Repo.insert(changeset, on_conflict: :nothing) do
           {:ok, _document} ->
             Logger.info("Stored Hubspot contact: #{contact["id"]}")
           {:error, %Ecto.Changeset{} = changeset} ->
@@ -256,7 +256,7 @@ defmodule AdvisorAgent.HubspotClient do
   defp process_and_store_note(user_id, note_payload) do
     content = note_payload["properties"]["hs_note_body"]
 
-    case OpenAIClient.generate_embedding(content) do
+    case NomicClient.generate_embedding(content) do
       {:ok, embedding} ->
         metadata = %{
           "user_id" => user_id,
@@ -271,7 +271,7 @@ defmodule AdvisorAgent.HubspotClient do
           metadata: metadata
         })
 
-        case Repo.insert(changeset) do
+        case Repo.insert(changeset, on_conflict: :nothing) do
           {:ok, _document} ->
             Logger.info("Stored Hubspot note: #{note_payload["id"]}")
           {:error, %Ecto.Changeset{} = changeset} ->

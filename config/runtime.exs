@@ -98,4 +98,17 @@ if config_env() == :prod do
   #       force_ssl: [hsts: true]
   #
   # Check `Plug.SSL` for all available options in `force_ssl`.
+
+  # Configure self-hosted model server URL
+  config :advisor_agent,
+    self_hosted_model_url: System.get_env("SELF_HOSTED_MODEL_URL") || "http://localhost:8080"
+
+  # Configure OpenAI
+  config :openai,
+    api_key: System.get_env("OPENAI_API_KEY"),
+    organization_key: System.get_env("OPENAI_ORGANIZATION_KEY")
+
+  # Configure Nomic
+  config :advisor_agent,
+    nomic_api_key: System.get_env("NOMIC_API_KEY")
 end

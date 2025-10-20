@@ -54,19 +54,26 @@ config :phoenix, :json_library, Jason
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
 
+# Build redirect URIs based on environment
+phx_host = System.get_env("PHX_HOST") || "localhost:4000"
+protocol = if phx_host =~ ~r/localhost/, do: "http", else: "https"
+base_url = "#{protocol}://#{phx_host}"
+
 config :ueberauth, Ueberauth,
   providers: [
     google: {Ueberauth.Strategy.Google, [
       client_id: System.get_env("GOOGLE_CLIENT_ID"),
       client_secret: System.get_env("GOOGLE_CLIENT_SECRET"),
       default_scope: "email profile https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/calendar.events",
-      redirect_uri: "http://localhost:4000/auth/google/callback"
+      redirect_uri: "#{base_url}/auth/google/callback",
+      access_type: "offline",
+      prompt: "consent"
     ]},
     hubspot: {Ueberauth.Strategy.Hubspot, [
       client_id: System.get_env("HUBSPOT_CLIENT_ID"),
       client_secret: System.get_env("HUBSPOT_CLIENT_SECRET"),
       scope: "crm.objects.contacts.read crm.objects.contacts.write oauth",
-      redirect_uri: "http://localhost:4000/auth/hubspot/callback"
+      redirect_uri: "#{base_url}/auth/hubspot/callback"
     ]}
   ]
 
@@ -76,5 +83,14 @@ config :ueberauth, Ueberauth.Strategy.Hubspot.OAuth,
 
 config :ueberauth_hubspot,
   base_api_url: "https://api.hubapi.com"
+
+# Configure OpenAI (for chat completions)
+config :openai,
+  api_key: System.get_env("OPENAI_API_KEY"),
+  organization_key: System.get_env("OPENAI_ORGANIZATION_KEY")
+
+# Configure Nomic (for embeddings)
+config :advisor_agent,
+  nomic_api_key: System.get_env("NOMIC_API_KEY")
 
 import_config "#{config_env()}.exs"

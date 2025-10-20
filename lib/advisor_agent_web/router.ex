@@ -19,14 +19,22 @@ defmodule AdvisorAgentWeb.Router do
     pipe_through :browser
 
     live "/", ChatLive, :index
+    live "/settings", SettingsLive, :index
   end
 
   scope "/auth", AdvisorAgentWeb do
     pipe_through :browser
 
+    get "/logout", AuthController, :delete
     get "/:provider", AuthController, :request
     get "/:provider/callback", AuthController, :callback
-    get "/logout", AuthController, :delete
+  end
+
+  # Health check endpoint for Fly.io
+  scope "/", AdvisorAgentWeb do
+    pipe_through :api
+
+    get "/health", HealthController, :index
   end
 
   # Other scopes may use custom stacks.

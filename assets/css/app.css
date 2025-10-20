@@ -125,9 +125,14 @@
 
 .avatar-group {
   display: flex;
-  -space-x-2;
+  gap: -0.5rem; /* equivalent to space-x-2 with negative margin */
 }
 
 .avatar-group .avatar {
   border: 2px solid white;
+  margin-left: -0.5rem;
+}
+
+.avatar-group .avatar:first-child {
+  margin-left: 0;
 }

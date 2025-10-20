@@ -3,7 +3,7 @@ defmodule AdvisorAgent.ProactiveAgent do
   Handles proactive behavior based on incoming events and ongoing instructions.
   """
 
-  alias AdvisorAgent.{Repo, TaskManager, Tools, ToolExecutor}
+  alias AdvisorAgent.{OpenAIModels, Repo, TaskManager, Tools, ToolExecutor}
   require Logger
 
   @doc """
@@ -81,6 +81,9 @@ defmodule AdvisorAgent.ProactiveAgent do
 
   # Private function to process an event with ongoing instructions
   defp process_with_instructions(user, event_data, instructions, event_type) do
+    # Reload user from database to get latest settings (model, API key, etc.)
+    fresh_user = Repo.get(AdvisorAgent.User, user.id)
+
     # Build system message with ongoing instructions
     instructions_text =
       Enum.map_join(instructions, "\n", fn inst ->
@@ -108,7 +111,7 @@ defmodule AdvisorAgent.ProactiveAgent do
     ]
 
     # Call OpenAI with tools
-    case handle_tool_calling_loop(messages, user, 0) do
+    case handle_tool_calling_loop(messages, fresh_user, 0) do
       {:ok, response} ->
         if String.contains?(response, "NO_ACTION_NEEDED") do
           Logger.info("No proactive action needed for #{event_type}")
@@ -141,7 +144,7 @@ defmodule AdvisorAgent.ProactiveAgent do
       tools = Tools.get_tool_definitions()
 
       # Call OpenAI with tools
-      case call_openai_with_tools(messages, tools) do
+      case call_openai_with_tools(messages, tools, user) do
         {:ok, %{"role" => "assistant", "content" => content, "tool_calls" => nil}}
         when not is_nil(content) ->
           # No tool calls, we have the final response
@@ -193,18 +196,79 @@ defmodule AdvisorAgent.ProactiveAgent do
     end
   end
 
-  defp call_openai_with_tools(messages, tools) do
-    case OpenAI.chat_completion(
-           model: "gpt-4-turbo-preview",
-           messages: messages,
-           tools: tools,
-           tool_choice: "auto"
-         ) do
+  defp call_openai_with_tools(messages, tools, user) do
+    # Get user's preferred model or use default
+    model_string = if user.selected_model do
+      user.selected_model
+    else
+      OpenAIModels.to_string(OpenAIModels.default_chat_model())
+    end
+
+    # Get user's API key if provided
+    api_key = user.openai_api_key
+
+    # Log the parameters being sent to OpenAI
+    Logger.info("=== Proactive Agent calling OpenAI ===")
+    Logger.info("Model: #{model_string}")
+    Logger.info("Using custom API key: #{if api_key, do: "Yes", else: "No (using system default)"}")
+
+    # Build params for OpenAI call
+    params = [
+      model: model_string,
+      messages: messages,
+      tools: tools,
+      tool_choice: "auto"
+    ]
+
+    # Use direct HTTP call for self-hosted models
+    result = if OpenAIModels.self_hosted?(model_string) do
+      call_self_hosted_with_tools(model_string, messages, tools)
+    else
+      config = if api_key, do: %OpenAI.Config{api_key: api_key}, else: %OpenAI.Config{}
+      OpenAI.chat_completion(params, config)
+    end
+
+    case result do
       {:ok, %{choices: [%{"message" => message} | _]}} ->
         {:ok, message}
 
       {:error, error} ->
         {:error, error}
+    end
+  end
+
+  defp call_self_hosted_with_tools(model, messages, tools) do
+    base_url = Application.get_env(:advisor_agent, :self_hosted_model_url, "http://localhost:8080")
+    url = "#{base_url}/v1/chat/completions"
+
+    body = Jason.encode!(%{
+      model: model,
+      messages: messages,
+      tools: tools,
+      tool_choice: "auto"
+    })
+
+    headers = [{"Content-Type", "application/json"}]
+    options = [recv_timeout: 120_000, timeout: 120_000]
+
+    case HTTPoison.post(url, body, headers, options) do
+      {:ok, %HTTPoison.Response{status_code: 200, body: response_body}} ->
+        case Jason.decode(response_body) do
+          {:ok, %{"choices" => [%{"message" => message} | _]}} ->
+            {:ok, %{choices: [%{"message" => message}]}}
+          {:ok, parsed} ->
+            Logger.error("Unexpected self-hosted response format: #{inspect(parsed)}")
+            {:error, "Unexpected response format"}
+          {:error, decode_error} ->
+            {:error, decode_error}
+        end
+
+      {:ok, %HTTPoison.Response{status_code: status_code, body: response_body}} ->
+        Logger.error("Self-hosted API error (#{status_code}): #{response_body}")
+        {:error, "HTTP #{status_code}"}
+
+      {:error, %HTTPoison.Error{reason: reason}} ->
+        {:error, reason}
     end
   end
 end

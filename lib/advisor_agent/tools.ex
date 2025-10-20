@@ -232,7 +232,7 @@ defmodule AdvisorAgent.Tools do
           description: "List all active ongoing instructions.",
           parameters: %{
             type: "object",
-            properties: {}
+            properties: %{}
           }
         }
       },

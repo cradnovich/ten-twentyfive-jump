@@ -1,7 +1,8 @@
 defmodule AdvisorAgentWeb.ChatLive do
   use AdvisorAgentWeb, :live_view
 
-  alias AdvisorAgent.{GmailClient, HubspotClient, OpenAIClient, Repo, Tools, ToolExecutor, User}
+  alias AdvisorAgent.{GmailClient, HubspotClient, NomicClient, OpenAIModels, Repo, ThreadSummarizer, Tools, ToolExecutor, User}
+  import AdvisorAgentWeb.ChatComponents
   require Logger
 
   def mount(_params, session, socket) do
@@ -13,10 +14,8 @@ defmodule AdvisorAgentWeb.ChatLive do
       end
 
     if current_user && current_user.google_access_token do
-      user_id = current_user.email
-
       Task.start(fn ->
-        GmailClient.fetch_and_store_emails(user_id, current_user.google_access_token)
+        GmailClient.fetch_and_store_emails_incremental(current_user, current_user.google_access_token)
       end)
     end
 
@@ -28,33 +27,129 @@ defmodule AdvisorAgentWeb.ChatLive do
       end)
     end
 
+    # Load or create active thread
+    {thread, messages} = if current_user do
+      load_or_create_thread(current_user)
+    else
+      {nil, []}
+    end
+
+    # Load threads for history tab
+    grouped_threads = if current_user do
+      Repo.get_threads_grouped_by_date(current_user.id)
+    else
+      %{today: [], yesterday: [], last_7_days: [], last_30_days: [], older: []}
+    end
+
     {:ok,
-     assign(socket, :messages, [])
+     assign(socket, :messages, messages)
      |> assign(:current_user, current_user)
-     |> assign(:user_input, "")}
+     |> assign(:user_input, "")
+     |> assign(:active_tab, :chat)
+     |> assign(:show_user_menu, false)
+     |> assign(:current_thread, thread)
+     |> assign(:thread_started_at, if(thread, do: thread.inserted_at, else: DateTime.utc_now()))
+     |> assign(:search_query, "")
+     |> assign(:grouped_threads, grouped_threads)}
+  end
+
+  defp load_or_create_thread(user) do
+    cond do
+      # User has an active thread - load it
+      user.active_thread_id != nil ->
+        case Repo.get_thread_with_messages(user.active_thread_id) do
+          nil ->
+            # Active thread was deleted, create new one
+            create_new_thread(user)
+
+          thread ->
+            messages = Enum.map(thread.messages, fn msg ->
+              %{text: msg.content, sender: String.to_atom(msg.role)}
+            end)
+            {thread, messages}
+        end
+
+      # No active thread - create one
+      true ->
+        create_new_thread(user)
+    end
+  end
+
+  defp create_new_thread(user) do
+    {:ok, thread} = Repo.create_thread(user.id)
+    {:ok, _user} = Repo.set_active_thread(user.id, thread.id)
+    {thread, []}
+  end
+
+  def handle_event("toggle_user_menu", _params, socket) do
+    {:noreply, assign(socket, :show_user_menu, !socket.assigns.show_user_menu)}
+  end
+
+  def handle_event("switch_tab", %{"tab" => tab}, socket) do
+    tab_atom = String.to_atom(tab)
+
+    # Reload threads when switching to history tab
+    socket = if tab_atom == :history && socket.assigns.current_user do
+      grouped_threads = Repo.get_threads_grouped_by_date(socket.assigns.current_user.id)
+      |> filter_threads_by_search(socket.assigns.search_query)
+      assign(socket, :grouped_threads, grouped_threads)
+    else
+      socket
+    end
+
+    {:noreply, assign(socket, :active_tab, tab_atom)}
+  end
+
+  def handle_event("update_user_input", %{"user_message" => value}, socket) do
+    {:noreply, assign(socket, :user_input, value)}
   end
 
   def handle_event("send_message", %{"user_message" => user_message}, socket) do
     current_user = socket.assigns.current_user
+    current_thread = socket.assigns.current_thread
 
     unless current_user do
       {:noreply, socket}
     else
+      # Reload user from database to get latest settings (model, API key, etc.)
+      fresh_user = Repo.get(User, current_user.id)
+
+      # Save user message to database
+      {:ok, _msg} = Repo.create_message(current_thread.id, "user", user_message)
+
       # Add user message to chat
       new_messages = socket.assigns.messages ++ [%{text: user_message, sender: :user}]
       socket = assign(socket, :messages, new_messages)
       socket = assign(socket, :user_input, "")
+      socket = assign(socket, :current_user, fresh_user)
 
       # Process message with RAG and tool calling
       socket =
-        case process_message_with_tools(user_message, current_user) do
+        case process_message_with_tools(user_message, fresh_user) do
           {:ok, response} ->
+            # Save assistant response to database
+            {:ok, _msg} = Repo.create_message(current_thread.id, "assistant", response)
+
             new_messages = socket.assigns.messages ++ [%{text: response, sender: :agent}]
-            assign(socket, :messages, new_messages)
+            socket = assign(socket, :messages, new_messages)
+
+            # Check if we should generate a summary (after 3 exchanges = 6 messages)
+            updated_thread = Repo.get_thread_with_messages(current_thread.id)
+            if ThreadSummarizer.ready_for_summary?(updated_thread) do
+              Task.start(fn ->
+                ThreadSummarizer.generate_summary(updated_thread, fresh_user)
+              end)
+            end
+
+            assign(socket, :current_thread, updated_thread)
 
           {:error, error} ->
             Logger.error("Failed to process message: #{inspect(error)}")
             error_msg = "I apologize, but I encountered an error processing your request. Please try again."
+
+            # Save error message to database
+            {:ok, _msg} = Repo.create_message(current_thread.id, "assistant", error_msg)
+
             new_messages = socket.assigns.messages ++ [%{text: error_msg, sender: :agent}]
             assign(socket, :messages, new_messages)
         end
@@ -63,17 +158,116 @@ defmodule AdvisorAgentWeb.ChatLive do
     end
   end
 
-  def handle_event("update_user_input", %{"value" => value}, socket) do
-    {:noreply, assign(socket, :user_input, value)}
+  def handle_event("new_thread", _params, socket) do
+    current_user = socket.assigns.current_user
+
+    unless current_user do
+      {:noreply, socket}
+    else
+      # Create new thread
+      {thread, messages} = create_new_thread(current_user)
+
+      # Reload threads for history
+      grouped_threads = Repo.get_threads_grouped_by_date(current_user.id)
+      |> filter_threads_by_search(socket.assigns.search_query)
+
+      {:noreply,
+       socket
+       |> assign(:current_thread, thread)
+       |> assign(:messages, messages)
+       |> assign(:thread_started_at, thread.inserted_at)
+       |> assign(:active_tab, :chat)
+       |> assign(:grouped_threads, grouped_threads)}
+    end
+  end
+
+  def handle_event("switch_thread", %{"thread_id" => thread_id}, socket) do
+    current_user = socket.assigns.current_user
+
+    unless current_user do
+      {:noreply, socket}
+    else
+      thread_id = String.to_integer(thread_id)
+
+      # Load the thread
+      case Repo.get_thread_with_messages(thread_id) do
+        nil ->
+          {:noreply, socket}
+
+        thread ->
+          # Set as active thread
+          {:ok, _user} = Repo.set_active_thread(current_user.id, thread.id)
+
+          # Convert messages to UI format
+          messages = Enum.map(thread.messages, fn msg ->
+            %{text: msg.content, sender: String.to_atom(msg.role)}
+          end)
+
+          {:noreply,
+           socket
+           |> assign(:current_thread, thread)
+           |> assign(:messages, messages)
+           |> assign(:thread_started_at, thread.inserted_at)
+           |> assign(:active_tab, :chat)}
+      end
+    end
+  end
+
+  def handle_event("delete_thread", %{"thread_id" => thread_id}, socket) do
+    current_user = socket.assigns.current_user
+    current_thread = socket.assigns.current_thread
+
+    unless current_user do
+      {:noreply, socket}
+    else
+      thread_id = String.to_integer(thread_id)
+
+      # Delete the thread
+      {:ok, _} = Repo.delete_thread(thread_id)
+
+      # Reload threads for history
+      grouped_threads = Repo.get_threads_grouped_by_date(current_user.id)
+      |> filter_threads_by_search(socket.assigns.search_query)
+
+      # If this was the active thread, create a new one
+      socket = if current_thread && current_thread.id == thread_id do
+        {thread, messages} = create_new_thread(current_user)
+
+        socket
+        |> assign(:current_thread, thread)
+        |> assign(:messages, messages)
+        |> assign(:thread_started_at, thread.inserted_at)
+      else
+        socket
+      end
+
+      {:noreply, assign(socket, :grouped_threads, grouped_threads)}
+    end
+  end
+
+  def handle_event("search_threads", %{"search" => %{"query" => query}}, socket) do
+    # Update search query and reload filtered threads
+    socket = socket
+    |> assign(:search_query, query)
+
+    socket = if socket.assigns.current_user do
+      grouped_threads = Repo.get_threads_grouped_by_date(socket.assigns.current_user.id)
+      |> filter_threads_by_search(query)
+      assign(socket, :grouped_threads, grouped_threads)
+    else
+      socket
+    end
+
+    {:noreply, socket}
   end
 
   defp process_message_with_tools(user_message, current_user) do
     # Generate embedding and get RAG context
     {context, _rag_error} =
-      case OpenAIClient.generate_embedding(user_message) do
+      case NomicClient.generate_embedding(user_message) do
         {:ok, query_embedding} ->
-          relevant_documents = Repo.search_documents(query_embedding)
-          context_text = Enum.map_join(relevant_documents, "\n", fn doc -> doc.content end)
+          relevant_documents = Repo.search_documents(query_embedding, 10)
+          context_text = format_context_with_metadata(relevant_documents)
           {context_text, nil}
 
         {:error, error} ->
@@ -149,9 +343,9 @@ defmodule AdvisorAgentWeb.ChatLive do
       tools = Tools.get_tool_definitions()
 
       # Call OpenAI with tools
-      case call_openai_with_tools(messages, tools) do
-        {:ok, %{"role" => "assistant", "content" => content, "tool_calls" => nil}}
-        when not is_nil(content) ->
+      case call_openai_with_tools(messages, tools, current_user) do
+        {:ok, %{"role" => "assistant", "content" => content, "tool_calls" => tool_calls}}
+        when is_nil(tool_calls) and not is_nil(content) ->
           # No tool calls, we have the final response
           {:ok, content}
 
@@ -161,7 +355,8 @@ defmodule AdvisorAgentWeb.ChatLive do
           Logger.info("LLM requested #{length(tool_calls)} tool call(s)")
 
           # Add assistant message with tool calls to conversation
-          messages = messages ++ [%{"role" => "assistant", "content" => content, "tool_calls" => tool_calls}]
+          assistant_message = %{"role" => "assistant", "content" => content, "tool_calls" => tool_calls}
+          messages = messages ++ [assistant_message]
 
           # Execute each tool call
           tool_results =
@@ -200,18 +395,209 @@ defmodule AdvisorAgentWeb.ChatLive do
     end
   end
 
-  defp call_openai_with_tools(messages, tools) do
-    case OpenAI.chat_completion(
-           model: "gpt-4-turbo-preview",
-           messages: messages,
-           tools: tools,
-           tool_choice: "auto"
-         ) do
+  defp call_openai_with_tools(messages, tools, current_user) do
+    # Get user's preferred model or use default
+    model_string = if current_user.selected_model do
+      current_user.selected_model
+    else
+      OpenAIModels.to_string(OpenAIModels.default_chat_model())
+    end
+
+    # Get user's API key if provided
+    api_key = current_user.openai_api_key
+
+    # Log the parameters being sent to OpenAI
+    Logger.info("=== Calling OpenAI with the following parameters ===")
+    Logger.info("Model: #{model_string}")
+    Logger.info("Using custom API key: #{if api_key, do: "Yes", else: "No (using system default)"}")
+    Logger.info("Messages: #{inspect(messages, pretty: true, limit: :infinity)}")
+    Logger.info("Tools: #{inspect(tools, pretty: true, limit: :infinity)}")
+    Logger.info("Tool choice: auto")
+    Logger.info("=== End of OpenAI parameters ===")
+
+    # Build params for OpenAI call
+    params = [
+      model: model_string,
+      messages: messages,
+      tools: tools,
+      tool_choice: "auto"
+    ]
+
+    # Use direct HTTP call for self-hosted models
+    result = if OpenAIModels.self_hosted?(model_string) do
+      call_self_hosted_with_tools(model_string, messages, tools)
+    else
+      config = if api_key, do: %OpenAI.Config{api_key: api_key}, else: %OpenAI.Config{}
+      OpenAI.chat_completion(params, config)
+    end
+
+    # Log the raw response from OpenAI
+    Logger.info("=== OpenAI raw response ===")
+    Logger.info("#{inspect(result, pretty: true, limit: :infinity)}")
+    Logger.info("=== End of OpenAI raw response ===")
+
+    case result do
       {:ok, %{choices: [%{"message" => message} | _]}} ->
+        Logger.info("Successfully extracted message from OpenAI response")
         {:ok, message}
 
+      {:ok, response} ->
+        Logger.error("OpenAI response did not match expected pattern. Response: #{inspect(response, pretty: true)}")
+        {:error, "Unexpected response format from OpenAI"}
+
       {:error, error} ->
+        Logger.error("OpenAI API error: #{inspect(error, pretty: true)}")
         {:error, error}
+    end
+  end
+
+  defp format_context_with_metadata(documents) when documents == [], do: ""
+
+  defp format_context_with_metadata(documents) do
+    documents
+    |> Enum.with_index(1)
+    |> Enum.map_join("\n\n", fn {doc, index} ->
+      source_type = doc.metadata["source"]
+
+      header = case source_type do
+        "gmail" ->
+          "[Email #{index}]"
+        "hubspot_contact" ->
+          name = "#{doc.metadata["firstname"]} #{doc.metadata["lastname"]}"
+          email = doc.metadata["email"]
+          "[Contact #{index}: #{name} (#{email})]"
+        "hubspot_note" ->
+          "[Note #{index}]"
+        _ ->
+          "[Document #{index}]"
+      end
+
+      "#{header}\n#{doc.content}"
+    end)
+  end
+
+  defp render_history(assigns) do
+    ~H"""
+    <!-- Search Box -->
+    <div class="mb-6">
+      <form phx-change="search_threads">
+        <input
+          type="text"
+          name="search[query]"
+          value={@search_query}
+          placeholder="Search threads..."
+          class="w-full px-4 py-2 text-gray-900 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
+      </form>
+    </div>
+
+    <!-- Thread Groups -->
+    <%= if @grouped_threads.today != [] do %>
+      <div class="mb-6">
+        <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Today</h3>
+        <%= for thread <- @grouped_threads.today do %>
+          <.thread_item thread={thread} current_thread_id={@current_thread && @current_thread.id} />
+        <% end %>
+      </div>
+    <% end %>
+
+    <%= if @grouped_threads.yesterday != [] do %>
+      <div class="mb-6">
+        <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Yesterday</h3>
+        <%= for thread <- @grouped_threads.yesterday do %>
+          <.thread_item thread={thread} current_thread_id={@current_thread && @current_thread.id} />
+        <% end %>
+      </div>
+    <% end %>
+
+    <%= if @grouped_threads.last_7_days != [] do %>
+      <div class="mb-6">
+        <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Last 7 Days</h3>
+        <%= for thread <- @grouped_threads.last_7_days do %>
+          <.thread_item thread={thread} current_thread_id={@current_thread && @current_thread.id} />
+        <% end %>
+      </div>
+    <% end %>
+
+    <%= if @grouped_threads.last_30_days != [] do %>
+      <div class="mb-6">
+        <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Last 30 Days</h3>
+        <%= for thread <- @grouped_threads.last_30_days do %>
+          <.thread_item thread={thread} current_thread_id={@current_thread && @current_thread.id} />
+        <% end %>
+      </div>
+    <% end %>
+
+    <%= if @grouped_threads.older != [] do %>
+      <div class="mb-6">
+        <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Older</h3>
+        <%= for thread <- @grouped_threads.older do %>
+          <.thread_item thread={thread} current_thread_id={@current_thread && @current_thread.id} />
+        <% end %>
+      </div>
+    <% end %>
+
+    <%= if Enum.all?(Map.values(@grouped_threads), &(&1 == [])) do %>
+      <div class="text-center py-12">
+        <p class="text-gray-500 text-base">No chat threads found</p>
+        <p class="text-gray-400 text-sm mt-2">Start a new conversation to see it here</p>
+      </div>
+    <% end %>
+    """
+  end
+
+  defp filter_threads_by_search(grouped_threads, "") do
+    grouped_threads
+  end
+
+  defp filter_threads_by_search(grouped_threads, query) do
+    filter_fn = fn threads ->
+      Enum.filter(threads, fn thread ->
+        String.contains?(String.downcase(thread.title), String.downcase(query))
+      end)
+    end
+
+    %{
+      today: filter_fn.(grouped_threads.today),
+      yesterday: filter_fn.(grouped_threads.yesterday),
+      last_7_days: filter_fn.(grouped_threads.last_7_days),
+      last_30_days: filter_fn.(grouped_threads.last_30_days),
+      older: filter_fn.(grouped_threads.older)
+    }
+  end
+
+  defp call_self_hosted_with_tools(model, messages, tools) do
+    base_url = Application.get_env(:advisor_agent, :self_hosted_model_url, "http://localhost:8080")
+    url = "#{base_url}/v1/chat/completions"
+
+    body = Jason.encode!(%{
+      model: model,
+      messages: messages,
+      tools: tools,
+      tool_choice: "auto"
+    })
+
+    headers = [{"Content-Type", "application/json"}]
+    options = [recv_timeout: 120_000, timeout: 120_000]
+
+    case HTTPoison.post(url, body, headers, options) do
+      {:ok, %HTTPoison.Response{status_code: 200, body: response_body}} ->
+        case Jason.decode(response_body) do
+          {:ok, %{"choices" => [%{"message" => message} | _]}} ->
+            {:ok, %{choices: [%{"message" => message}]}}
+          {:ok, parsed} ->
+            Logger.error("Unexpected self-hosted response format: #{inspect(parsed)}")
+            {:error, "Unexpected response format"}
+          {:error, decode_error} ->
+            {:error, decode_error}
+        end
+
+      {:ok, %HTTPoison.Response{status_code: status_code, body: response_body}} ->
+        Logger.error("Self-hosted API error (#{status_code}): #{response_body}")
+        {:error, "HTTP #{status_code}"}
+
+      {:error, %HTTPoison.Error{reason: reason}} ->
+        {:error, reason}
     end
   end
 
@@ -219,112 +605,37 @@ defmodule AdvisorAgentWeb.ChatLive do
     ~H"""
     <%= if @current_user do %>
       <div class="flex flex-col h-screen bg-white">
-        <!-- Header -->
-        <div class="flex items-center justify-between px-6 py-4 border-b border-gray-200">
-          <h1 class="text-2xl font-semibold text-gray-900">Ask Anything</h1>
-          <div class="flex items-center gap-4">
-            <img src={@current_user.picture} alt={@current_user.name} class="w-8 h-8 rounded-full">
-            <%= if !@current_user.hubspot_access_token do %>
-              <a href="/auth/hubspot" class="text-sm text-orange-600 hover:text-orange-700 font-medium">Connect Hubspot</a>
+        <.chat_header current_user={@current_user} show_user_menu={@show_user_menu} />
+        <.tab_nav active_tab={@active_tab} />
+
+        <%= if @active_tab == :chat do %>
+          <!-- Chat Area -->
+          <div class="flex-1 overflow-y-auto px-6 py-6">
+            <!-- Thread Start Time -->
+            <div class="text-center mb-8">
+              <p class="text-xs text-gray-400"><%= Calendar.strftime(@thread_started_at, "%I:%M%P – %B %d, %Y") %></p>
+            </div>
+
+            <!-- Initial Message -->
+            <div class="mb-6">
+              <p class="text-gray-900 text-base">
+                I can answer questions about any Jump meeting. What do you want to know?
+              </p>
+            </div>
+
+            <!-- Messages -->
+            <%= for message <- @messages do %>
+              <.message_bubble message={message} />
             <% end %>
-            <a href="/auth/logout" class="text-sm text-gray-500 hover:text-gray-700">Log out</a>
           </div>
-        </div>
-
-        <!-- Tabs -->
-        <div class="flex items-center justify-between px-6 py-3 border-b border-gray-200">
-          <div class="flex items-center gap-6">
-            <button class="text-sm font-medium text-gray-900 border-b-2 border-gray-900 pb-1">Chat</button>
-            <button class="text-sm font-medium text-gray-500 hover:text-gray-900 pb-1">History</button>
+        <% else %>
+          <!-- History Area -->
+          <div class="flex-1 overflow-y-auto px-6 py-6">
+            <%= render_history(assigns) %>
           </div>
-          <button class="flex items-center gap-2 text-sm font-medium text-gray-700 hover:text-gray-900">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-            </svg>
-            New thread
-          </button>
-        </div>
+        <% end %>
 
-        <!-- Chat Area -->
-        <div class="flex-1 overflow-y-auto px-6 py-6">
-          <!-- Context Info -->
-          <div class="text-center mb-8">
-            <p class="text-sm text-gray-500">Context set to all meetings</p>
-            <p class="text-xs text-gray-400">11:17am – May 13, 2025</p>
-          </div>
-
-          <!-- Initial Message -->
-          <div class="mb-6">
-            <p class="text-gray-900 text-base">
-              I can answer questions about any Jump meeting. What do you want to know?
-            </p>
-          </div>
-
-          <!-- Messages -->
-          <%= for message <- @messages do %>
-            <%= if message.sender == :user do %>
-              <div class="flex justify-end mb-6">
-                <div class="bg-gray-100 rounded-2xl px-5 py-3 max-w-lg">
-                  <p class="text-gray-900 text-base"><%= message.text %></p>
-                </div>
-              </div>
-            <% else %>
-              <div class="mb-6">
-                <div class="text-gray-900 text-base max-w-2xl">
-                  <%= message.text %>
-                </div>
-              </div>
-            <% end %>
-          <% end %>
-        </div>
-
-        <!-- Input Area -->
-        <div class="border-t border-gray-200 px-6 py-4">
-          <form phx-submit="send_message">
-            <div class="relative">
-              <textarea
-                class="w-full resize-none rounded-2xl border border-gray-300 px-4 py-3 pr-12 focus:outline-none focus:border-gray-400 text-base"
-                rows="1"
-                placeholder="Ask anything about your meetings..."
-                name="user_message"
-                phx-change="update_user_input"
-              ><%= @user_input %></textarea>
-            </div>
-          </form>
-
-          <div class="flex items-center justify-between mt-3">
-            <div class="flex items-center gap-2">
-              <button class="p-2 hover:bg-gray-100 rounded-full">
-                <svg class="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-                </svg>
-              </button>
-              <button class="flex items-center gap-1 px-3 py-1.5 text-sm border border-gray-300 rounded-full hover:bg-gray-50">
-                <span>All meetings</span>
-                <svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-                </svg>
-              </button>
-            </div>
-            <div class="flex items-center gap-2">
-              <button class="p-2 hover:bg-gray-100 rounded-full">
-                <svg class="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.344 6.344a1 1 0 01-1.414 0l-2.828-2.828a1 1 0 010-1.414l6.344-6.344a1 1 0 011.414 0l2.828 2.828a1 1 0 010 1.414z" />
-                </svg>
-              </button>
-              <button type="submit" form="send_message" class="p-2 bg-gray-900 hover:bg-gray-800 rounded-full">
-                <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18" />
-                </svg>
-              </button>
-              <button class="p-2 hover:bg-gray-100 rounded-full">
-                <svg class="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-14 0m7 10v-3" />
-                </svg>
-              </button>
-            </div>
-          </div>
-        </div>
+        <.chat_input user_input={@user_input} />
       </div>
     <% else %>
       <!-- Login Screen -->

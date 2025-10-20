@@ -3,7 +3,7 @@ defmodule AdvisorAgent.TaskManager do
   Manages multi-step tasks that require waiting for external responses.
   """
 
-  alias AdvisorAgent.{Repo, Tools, ToolExecutor}
+  alias AdvisorAgent.{OpenAIModels, Repo, Tools, ToolExecutor}
   require Logger
 
   @doc """
@@ -23,11 +23,14 @@ defmodule AdvisorAgent.TaskManager do
   Resumes a task with new information (e.g., an email reply).
   """
   def resume_task(task, new_message, user) do
+    # Reload user from database to get latest settings (model, API key, etc.)
+    fresh_user = Repo.get(AdvisorAgent.User, user.id)
+
     # Add new message to conversation history
     updated_history = task.conversation_history ++ [new_message]
 
     # Continue the conversation with the AI
-    case continue_task_conversation(updated_history, user, task) do
+    case continue_task_conversation(updated_history, fresh_user, task) do
       {:ok, response, :completed} ->
         # Task is complete
         Repo.update_task(task, %{
@@ -100,7 +103,7 @@ defmodule AdvisorAgent.TaskManager do
       tools = Tools.get_tool_definitions()
 
       # Call OpenAI with tools
-      case call_openai_with_tools(messages, tools) do
+      case call_openai_with_tools(messages, tools, user) do
         {:ok, %{"role" => "assistant", "content" => content, "tool_calls" => nil}}
         when not is_nil(content) ->
           # No tool calls, we have the final response
@@ -152,13 +155,39 @@ defmodule AdvisorAgent.TaskManager do
     end
   end
 
-  defp call_openai_with_tools(messages, tools) do
-    case OpenAI.chat_completion(
-           model: "gpt-4-turbo-preview",
-           messages: messages,
-           tools: tools,
-           tool_choice: "auto"
-         ) do
+  defp call_openai_with_tools(messages, tools, user) do
+    # Get user's preferred model or use default
+    model_string = if user.selected_model do
+      user.selected_model
+    else
+      OpenAIModels.to_string(OpenAIModels.default_chat_model())
+    end
+
+    # Get user's API key if provided
+    api_key = user.openai_api_key
+
+    # Log the parameters being sent to OpenAI
+    Logger.info("=== TaskManager calling OpenAI ===")
+    Logger.info("Model: #{model_string}")
+    Logger.info("Using custom API key: #{if api_key, do: "Yes", else: "No (using system default)"}")
+
+    # Build params for OpenAI call
+    params = [
+      model: model_string,
+      messages: messages,
+      tools: tools,
+      tool_choice: "auto"
+    ]
+
+    # Use direct HTTP call for self-hosted models
+    result = if OpenAIModels.self_hosted?(model_string) do
+      call_self_hosted_with_tools(model_string, messages, tools)
+    else
+      config = if api_key, do: %OpenAI.Config{api_key: api_key}, else: %OpenAI.Config{}
+      OpenAI.chat_completion(params, config)
+    end
+
+    case result do
       {:ok, %{choices: [%{"message" => message} | _]}} ->
         {:ok, message}
 
@@ -182,5 +211,40 @@ defmodule AdvisorAgent.TaskManager do
           String.downcase(query_text)
         )
     end)
+  end
+
+  defp call_self_hosted_with_tools(model, messages, tools) do
+    base_url = Application.get_env(:advisor_agent, :self_hosted_model_url, "http://localhost:8080")
+    url = "#{base_url}/v1/chat/completions"
+
+    body = Jason.encode!(%{
+      model: model,
+      messages: messages,
+      tools: tools,
+      tool_choice: "auto"
+    })
+
+    headers = [{"Content-Type", "application/json"}]
+    options = [recv_timeout: 120_000, timeout: 120_000]
+
+    case HTTPoison.post(url, body, headers, options) do
+      {:ok, %HTTPoison.Response{status_code: 200, body: response_body}} ->
+        case Jason.decode(response_body) do
+          {:ok, %{"choices" => [%{"message" => message} | _]}} ->
+            {:ok, %{choices: [%{"message" => message}]}}
+          {:ok, parsed} ->
+            Logger.error("Unexpected self-hosted response format: #{inspect(parsed)}")
+            {:error, "Unexpected response format"}
+          {:error, decode_error} ->
+            {:error, decode_error}
+        end
+
+      {:ok, %HTTPoison.Response{status_code: status_code, body: response_body}} ->
+        Logger.error("Self-hosted API error (#{status_code}): #{response_body}")
+        {:error, "HTTP #{status_code}"}
+
+      {:error, %HTTPoison.Error{reason: reason}} ->
+        {:error, reason}
+    end
   end
 end
