@@ -20,6 +20,10 @@ if System.get_env("PHX_SERVER") do
   config :advisor_agent, AdvisorAgentWeb.Endpoint, server: true
 end
 
+# Configure self-hosted model server URL (available in all environments)
+config :advisor_agent,
+  self_hosted_model_url: System.get_env("SELF_HOSTED_MODEL_URL") || "http://localhost:8080"
+
 if config_env() == :prod do
   database_url =
     System.get_env("DATABASE_URL") ||
@@ -98,10 +102,6 @@ if config_env() == :prod do
   #       force_ssl: [hsts: true]
   #
   # Check `Plug.SSL` for all available options in `force_ssl`.
-
-  # Configure self-hosted model server URL
-  config :advisor_agent,
-    self_hosted_model_url: System.get_env("SELF_HOSTED_MODEL_URL") || "http://localhost:8080"
 
   # Configure OpenAI
   config :openai,

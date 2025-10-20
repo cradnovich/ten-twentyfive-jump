@@ -157,9 +157,11 @@ curl https://advisor-agent.fly.dev/health
    fly secrets set SELF_HOSTED_MODEL_URL="https://your-pod-id.runpod.io"
    ```
 
-### Option 2: Modal Labs (Serverless - Best for Low Usage)
+### Option 2: Modal Labs (Recommended - Serverless with vLLM)
 
-**Cost:** $0.00010/second GPU time (scales to zero)
+**Cost:** L4 GPU @ ~$0.60/hour, scales to zero when idle
+
+A complete, production-ready Modal deployment is included in the `/modal-labs-stuff` directory.
 
 1. **Install Modal**:
    ```bash
@@ -167,7 +169,48 @@ curl https://advisor-agent.fly.dev/health
    modal setup
    ```
 
-2. **Create `modal_llama.py`**:
+2. **Set up Hugging Face access** (for Llama models):
+   ```bash
+   # Accept the license at: https://huggingface.co/meta-llama/Llama-3.2-3B-Instruct
+   # Create a token at: https://huggingface.co/settings/tokens
+   modal secret create huggingface HF_TOKEN=<your-token>
+   ```
+
+3. **Deploy the server**:
+   ```bash
+   cd modal-labs-stuff
+   modal deploy jump_llama.py
+   ```
+
+   This will output a URL like:
+   ```
+   Web endpoint: https://your-workspace--jump-llama-server-serve.modal.run
+   ```
+
+4. **Test the deployment**:
+   ```bash
+   modal run jump_llama.py
+   ```
+
+5. **Update Fly.io Secret**:
+   ```bash
+   fly secrets set SELF_HOSTED_MODEL_URL="https://your-workspace--jump-llama-server-serve.modal.run"
+   ```
+
+**Key Features**:
+- OpenAI-compatible API (`/v1/chat/completions`)
+- Automatic scaling (15-minute grace period before scaling to zero)
+- Function calling / tool use support
+- Handles 16 concurrent requests per replica
+- Cost-effective L4 GPU (~$0.60/hour active time)
+
+**For detailed configuration options and troubleshooting**, see `modal-labs-stuff/README.md`.
+
+### Option 2b: Modal Labs (Old llama.cpp approach - Not Recommended)
+
+If you prefer raw llama.cpp instead of vLLM (not recommended for production):
+
+1. **Create `modal_llama.py`**:
    ```python
    import modal
 
