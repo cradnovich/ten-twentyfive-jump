@@ -212,18 +212,18 @@ defmodule AdvisorAgent.ProactiveAgent do
     Logger.info("Model: #{model_string}")
     Logger.info("Using custom API key: #{if api_key, do: "Yes", else: "No (using system default)"}")
 
-    # Build options for OpenAI call
-    options = [
+    # Build params for OpenAI call
+    params = [
       model: model_string,
       messages: messages,
       tools: tools,
       tool_choice: "auto"
     ]
 
-    # Add API key if user provided one
-    options = if api_key, do: Keyword.put(options, :api_key, api_key), else: options
+    # Create config with API key if user provided one
+    config = if api_key, do: %OpenAI.Config{api_key: api_key}, else: %OpenAI.Config{}
 
-    case OpenAI.chat_completion(options) do
+    case OpenAI.chat_completion(params, config) do
       {:ok, %{choices: [%{"message" => message} | _]}} ->
         {:ok, message}
 

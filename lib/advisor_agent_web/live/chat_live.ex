@@ -1,7 +1,7 @@
 defmodule AdvisorAgentWeb.ChatLive do
   use AdvisorAgentWeb, :live_view
 
-  alias AdvisorAgent.{GmailClient, HubspotClient, NomicClient, OpenAIModels, Repo, Tools, ToolExecutor, User}
+  alias AdvisorAgent.{GmailClient, HubspotClient, NomicClient, OpenAIModels, Repo, ThreadSummarizer, Tools, ToolExecutor, User}
   import AdvisorAgentWeb.ChatComponents
   require Logger
 
@@ -27,13 +27,50 @@ defmodule AdvisorAgentWeb.ChatLive do
       end)
     end
 
+    # Load or create active thread
+    {thread, messages} = if current_user do
+      load_or_create_thread(current_user)
+    else
+      {nil, []}
+    end
+
     {:ok,
-     assign(socket, :messages, [])
+     assign(socket, :messages, messages)
      |> assign(:current_user, current_user)
      |> assign(:user_input, "")
      |> assign(:active_tab, :chat)
      |> assign(:show_user_menu, false)
-     |> assign(:thread_started_at, DateTime.utc_now())}
+     |> assign(:current_thread, thread)
+     |> assign(:thread_started_at, if(thread, do: thread.inserted_at, else: DateTime.utc_now()))
+     |> assign(:search_query, "")}
+  end
+
+  defp load_or_create_thread(user) do
+    cond do
+      # User has an active thread - load it
+      user.active_thread_id != nil ->
+        case Repo.get_thread_with_messages(user.active_thread_id) do
+          nil ->
+            # Active thread was deleted, create new one
+            create_new_thread(user)
+
+          thread ->
+            messages = Enum.map(thread.messages, fn msg ->
+              %{text: msg.content, sender: String.to_atom(msg.role)}
+            end)
+            {thread, messages}
+        end
+
+      # No active thread - create one
+      true ->
+        create_new_thread(user)
+    end
+  end
+
+  defp create_new_thread(user) do
+    {:ok, thread} = Repo.create_thread(user.id)
+    {:ok, _user} = Repo.set_active_thread(user.id, thread.id)
+    {thread, []}
   end
 
   def handle_event("toggle_user_menu", _params, socket) do
@@ -50,12 +87,16 @@ defmodule AdvisorAgentWeb.ChatLive do
 
   def handle_event("send_message", %{"user_message" => user_message}, socket) do
     current_user = socket.assigns.current_user
+    current_thread = socket.assigns.current_thread
 
     unless current_user do
       {:noreply, socket}
     else
       # Reload user from database to get latest settings (model, API key, etc.)
       fresh_user = Repo.get(User, current_user.id)
+
+      # Save user message to database
+      {:ok, _msg} = Repo.create_message(current_thread.id, "user", user_message)
 
       # Add user message to chat
       new_messages = socket.assigns.messages ++ [%{text: user_message, sender: :user}]
@@ -67,18 +108,117 @@ defmodule AdvisorAgentWeb.ChatLive do
       socket =
         case process_message_with_tools(user_message, fresh_user) do
           {:ok, response} ->
+            # Save assistant response to database
+            {:ok, _msg} = Repo.create_message(current_thread.id, "assistant", response)
+
             new_messages = socket.assigns.messages ++ [%{text: response, sender: :agent}]
-            assign(socket, :messages, new_messages)
+            socket = assign(socket, :messages, new_messages)
+
+            # Check if we should generate a summary (after 3 exchanges = 6 messages)
+            updated_thread = Repo.get_thread_with_messages(current_thread.id)
+            if ThreadSummarizer.ready_for_summary?(updated_thread) do
+              Task.start(fn ->
+                ThreadSummarizer.generate_summary(updated_thread, fresh_user)
+              end)
+            end
+
+            assign(socket, :current_thread, updated_thread)
 
           {:error, error} ->
             Logger.error("Failed to process message: #{inspect(error)}")
             error_msg = "I apologize, but I encountered an error processing your request. Please try again."
+
+            # Save error message to database
+            {:ok, _msg} = Repo.create_message(current_thread.id, "assistant", error_msg)
+
             new_messages = socket.assigns.messages ++ [%{text: error_msg, sender: :agent}]
             assign(socket, :messages, new_messages)
         end
 
       {:noreply, socket}
     end
+  end
+
+  def handle_event("new_thread", _params, socket) do
+    current_user = socket.assigns.current_user
+
+    unless current_user do
+      {:noreply, socket}
+    else
+      # Create new thread
+      {thread, messages} = create_new_thread(current_user)
+
+      {:noreply,
+       socket
+       |> assign(:current_thread, thread)
+       |> assign(:messages, messages)
+       |> assign(:thread_started_at, thread.inserted_at)
+       |> assign(:active_tab, :chat)}
+    end
+  end
+
+  def handle_event("switch_thread", %{"thread_id" => thread_id}, socket) do
+    current_user = socket.assigns.current_user
+
+    unless current_user do
+      {:noreply, socket}
+    else
+      thread_id = String.to_integer(thread_id)
+
+      # Load the thread
+      case Repo.get_thread_with_messages(thread_id) do
+        nil ->
+          {:noreply, socket}
+
+        thread ->
+          # Set as active thread
+          {:ok, _user} = Repo.set_active_thread(current_user.id, thread.id)
+
+          # Convert messages to UI format
+          messages = Enum.map(thread.messages, fn msg ->
+            %{text: msg.content, sender: String.to_atom(msg.role)}
+          end)
+
+          {:noreply,
+           socket
+           |> assign(:current_thread, thread)
+           |> assign(:messages, messages)
+           |> assign(:thread_started_at, thread.inserted_at)
+           |> assign(:active_tab, :chat)}
+      end
+    end
+  end
+
+  def handle_event("delete_thread", %{"thread_id" => thread_id}, socket) do
+    current_user = socket.assigns.current_user
+    current_thread = socket.assigns.current_thread
+
+    unless current_user do
+      {:noreply, socket}
+    else
+      thread_id = String.to_integer(thread_id)
+
+      # Delete the thread
+      {:ok, _} = Repo.delete_thread(thread_id)
+
+      # If this was the active thread, create a new one
+      socket = if current_thread && current_thread.id == thread_id do
+        {thread, messages} = create_new_thread(current_user)
+
+        socket
+        |> assign(:current_thread, thread)
+        |> assign(:messages, messages)
+        |> assign(:thread_started_at, thread.inserted_at)
+      else
+        socket
+      end
+
+      {:noreply, socket}
+    end
+  end
+
+  def handle_event("search_threads", %{"search" => %{"query" => query}}, socket) do
+    {:noreply, assign(socket, :search_query, query)}
   end
 
   defp process_message_with_tools(user_message, current_user) do
@@ -235,18 +375,18 @@ defmodule AdvisorAgentWeb.ChatLive do
     Logger.info("Tool choice: auto")
     Logger.info("=== End of OpenAI parameters ===")
 
-    # Build options for OpenAI call
-    options = [
+    # Build params for OpenAI call
+    params = [
       model: model_string,
       messages: messages,
       tools: tools,
       tool_choice: "auto"
     ]
 
-    # Add API key if user provided one
-    options = if api_key, do: Keyword.put(options, :api_key, api_key), else: options
+    # Create config with API key if user provided one
+    config = if api_key, do: %OpenAI.Config{api_key: api_key}, else: %OpenAI.Config{}
 
-    result = OpenAI.chat_completion(options)
+    result = OpenAI.chat_completion(params, config)
 
     # Log the raw response from OpenAI
     Logger.info("=== OpenAI raw response ===")
@@ -293,6 +433,105 @@ defmodule AdvisorAgentWeb.ChatLive do
     end)
   end
 
+  defp render_history(assigns) do
+    # Get threads grouped by date and assign to assigns
+    assigns = if assigns.current_user do
+      grouped = Repo.get_threads_grouped_by_date(assigns.current_user.id)
+      |> filter_threads_by_search(assigns.search_query)
+      assign(assigns, :grouped_threads, grouped)
+    else
+      assign(assigns, :grouped_threads, %{today: [], yesterday: [], last_7_days: [], last_30_days: [], older: []})
+    end
+
+    ~H"""
+    <!-- Search Box -->
+    <div class="mb-6">
+      <form phx-change="search_threads">
+        <input
+          type="text"
+          name="search[query]"
+          value={@search_query}
+          placeholder="Search threads..."
+          class="w-full px-4 py-2 text-gray-900 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
+      </form>
+    </div>
+
+    <!-- Thread Groups -->
+    <%= if @grouped_threads.today != [] do %>
+      <div class="mb-6">
+        <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Today</h3>
+        <%= for thread <- @grouped_threads.today do %>
+          <.thread_item thread={thread} current_thread_id={@current_thread && @current_thread.id} />
+        <% end %>
+      </div>
+    <% end %>
+
+    <%= if @grouped_threads.yesterday != [] do %>
+      <div class="mb-6">
+        <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Yesterday</h3>
+        <%= for thread <- @grouped_threads.yesterday do %>
+          <.thread_item thread={thread} current_thread_id={@current_thread && @current_thread.id} />
+        <% end %>
+      </div>
+    <% end %>
+
+    <%= if @grouped_threads.last_7_days != [] do %>
+      <div class="mb-6">
+        <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Last 7 Days</h3>
+        <%= for thread <- @grouped_threads.last_7_days do %>
+          <.thread_item thread={thread} current_thread_id={@current_thread && @current_thread.id} />
+        <% end %>
+      </div>
+    <% end %>
+
+    <%= if @grouped_threads.last_30_days != [] do %>
+      <div class="mb-6">
+        <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Last 30 Days</h3>
+        <%= for thread <- @grouped_threads.last_30_days do %>
+          <.thread_item thread={thread} current_thread_id={@current_thread && @current_thread.id} />
+        <% end %>
+      </div>
+    <% end %>
+
+    <%= if @grouped_threads.older != [] do %>
+      <div class="mb-6">
+        <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Older</h3>
+        <%= for thread <- @grouped_threads.older do %>
+          <.thread_item thread={thread} current_thread_id={@current_thread && @current_thread.id} />
+        <% end %>
+      </div>
+    <% end %>
+
+    <%= if Enum.all?(Map.values(@grouped_threads), &(&1 == [])) do %>
+      <div class="text-center py-12">
+        <p class="text-gray-500 text-base">No chat threads found</p>
+        <p class="text-gray-400 text-sm mt-2">Start a new conversation to see it here</p>
+      </div>
+    <% end %>
+    """
+  end
+
+  defp filter_threads_by_search(grouped_threads, "") do
+    grouped_threads
+  end
+
+  defp filter_threads_by_search(grouped_threads, query) do
+    filter_fn = fn threads ->
+      Enum.filter(threads, fn thread ->
+        String.contains?(String.downcase(thread.title), String.downcase(query))
+      end)
+    end
+
+    %{
+      today: filter_fn.(grouped_threads.today),
+      yesterday: filter_fn.(grouped_threads.yesterday),
+      last_7_days: filter_fn.(grouped_threads.last_7_days),
+      last_30_days: filter_fn.(grouped_threads.last_30_days),
+      older: filter_fn.(grouped_threads.older)
+    }
+  end
+
   def render(assigns) do
     ~H"""
     <%= if @current_user do %>
@@ -323,10 +562,7 @@ defmodule AdvisorAgentWeb.ChatLive do
         <% else %>
           <!-- History Area -->
           <div class="flex-1 overflow-y-auto px-6 py-6">
-            <div class="text-center py-12">
-              <p class="text-gray-500 text-base">No previous chat threads</p>
-              <p class="text-gray-400 text-sm mt-2">Your chat history will appear here</p>
-            </div>
+            <%= render_history(assigns) %>
           </div>
         <% end %>
 

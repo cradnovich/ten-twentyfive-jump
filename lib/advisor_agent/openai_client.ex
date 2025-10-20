@@ -15,10 +15,10 @@ defmodule AdvisorAgent.OpenAIClient do
   def generate_embedding(text, api_key \\ nil) when is_binary(text) do
     model_string = OpenAIModels.to_string(OpenAIModels.default_embedding_model())
 
-    options = [model: model_string, input: text]
-    options = if api_key, do: Keyword.put(options, :api_key, api_key), else: options
+    params = [model: model_string, input: text]
+    config = if api_key, do: %OpenAI.Config{api_key: api_key}, else: %OpenAI.Config{}
 
-    case OpenAI.embeddings(options) do
+    case OpenAI.embeddings(params, config) do
       {:ok, %{data: [%{"embedding" => embedding} | _rest]}} ->
         {:ok, embedding}
 
@@ -46,10 +46,10 @@ defmodule AdvisorAgent.OpenAIClient do
       model
     end
 
-    options = [model: model_string, messages: messages]
-    options = if api_key, do: Keyword.put(options, :api_key, api_key), else: options
+    params = [model: model_string, messages: messages]
+    config = if api_key, do: %OpenAI.Config{api_key: api_key}, else: %OpenAI.Config{}
 
-    case OpenAI.chat_completion(options) do
+    case OpenAI.chat_completion(params, config) do
       {:ok, %{choices: [%{"message" => %{"content" => content}} | _rest]}} ->
         {:ok, content}
 

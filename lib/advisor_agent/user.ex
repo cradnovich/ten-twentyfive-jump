@@ -23,6 +23,12 @@ defmodule AdvisorAgent.User do
     field :openai_api_key, :string
     field :selected_model, :string
 
+    # Active thread tracking
+    belongs_to :active_thread, AdvisorAgent.Thread
+
+    # Associations
+    has_many :threads, AdvisorAgent.Thread
+
     timestamps()
   end
 
@@ -84,5 +90,13 @@ defmodule AdvisorAgent.User do
   def update_ai_settings(user, attrs) do
     user
     |> cast(attrs, [:openai_api_key, :selected_model])
+  end
+
+  @doc """
+  Updates the active thread for the user.
+  """
+  def update_active_thread(user, thread_id) do
+    user
+    |> cast(%{active_thread_id: thread_id}, [:active_thread_id])
   end
 end

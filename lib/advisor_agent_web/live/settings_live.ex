@@ -162,7 +162,7 @@ defmodule AdvisorAgentWeb.SettingsLive do
                   class="block w-full px-3 py-2 text-gray-900 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
                 >
                   <%= for model <- OpenAIModels.list_chat_models() do %>
-                    <option value={Atom.to_string(model)} selected={@selected_model == Atom.to_string(model)}>
+                    <option value={OpenAIModels.to_string(model)} selected={@selected_model == OpenAIModels.to_string(model)}>
                       <%= OpenAIModels.to_string(model) %>
                     </option>
                   <% end %>
