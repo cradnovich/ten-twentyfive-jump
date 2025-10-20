@@ -13,12 +13,16 @@ defmodule AdvisorAgentWeb.SettingsLive do
       end
 
     if current_user do
+      # Default to the system default model if user hasn't selected one
+      default_model = OpenAIModels.to_string(OpenAIModels.default_chat_model())
+      selected_model = current_user.selected_model || default_model
+
       {:ok,
        socket
        |> assign(:current_user, current_user)
        |> assign(:openai_api_key, current_user.openai_api_key || "")
-       |> assign(:selected_model, current_user.selected_model || Atom.to_string(OpenAIModels.default_chat_model()))
-       |> assign(:show_api_key_input, requires_api_key?(current_user.selected_model || Atom.to_string(OpenAIModels.default_chat_model())))}
+       |> assign(:selected_model, selected_model)
+       |> assign(:show_api_key_input, requires_api_key?(selected_model))}
     else
       {:ok, redirect(socket, to: "/")}
     end
@@ -73,14 +77,18 @@ defmodule AdvisorAgentWeb.SettingsLive do
   end
 
   # Helper function to determine if a model requires an API key
-  # For now, we'll say that all models except for a specific "self-hosted" model require an API key
-  # In the future, this can be expanded to include other self-hosted models
+  # For now, all OpenAI models show the API key input (but it's optional - system key is used as fallback)
+  # In the future, self-hosted models won't show the API key input
   defp requires_api_key?("self-hosted"), do: false
   defp requires_api_key?(_model), do: true
 
   def render(assigns) do
     ~H"""
     <div class="min-h-screen bg-gray-50">
+      <!-- Flash Messages -->
+      <.flash kind={:info} flash={@flash} />
+      <.flash kind={:error} flash={@flash} />
+
       <div class="max-w-4xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
         <!-- Header -->
         <div class="mb-8">
@@ -100,20 +108,21 @@ defmodule AdvisorAgentWeb.SettingsLive do
           </div>
           <div class="px-6 py-4">
             <%= if @current_user.hubspot_access_token do %>
-              <div class="flex items-center justify-between">
-                <div class="flex items-center">
+              <div class="flex items-center justify-between gap-4">
+                <div class="flex items-center gap-3">
                   <span class="inline-flex items-center px-3 py-1.5 text-sm font-medium text-green-700 bg-green-100 rounded-full">
                     <svg class="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
                       <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
                     </svg>
                     Connected
                   </span>
+                  <span class="text-sm text-gray-600">Your Hubspot account is connected</span>
                 </div>
                 <button
                   phx-click="disconnect_hubspot"
-                  class="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors"
+                  class="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors flex-shrink-0"
                 >
-                  Disconnect Hubspot
+                  Disconnect
                 </button>
               </div>
             <% else %>
@@ -150,18 +159,13 @@ defmodule AdvisorAgentWeb.SettingsLive do
                   name="model"
                   phx-change="update_model"
                   value={@selected_model}
-                  class="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                  class="block w-full px-3 py-2 text-gray-900 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
                 >
-                  <optgroup label="Self-Hosted Models">
-                    <option value="self-hosted">Default (Self-Hosted)</option>
-                  </optgroup>
-                  <optgroup label="OpenAI Models">
-                    <%= for model <- OpenAIModels.list_chat_models() do %>
-                      <option value={Atom.to_string(model)}>
-                        {OpenAIModels.to_string(model)}
-                      </option>
-                    <% end %>
-                  </optgroup>
+                  <%= for model <- OpenAIModels.list_chat_models() do %>
+                    <option value={Atom.to_string(model)} selected={@selected_model == Atom.to_string(model)}>
+                      <%= OpenAIModels.to_string(model) %>
+                    </option>
+                  <% end %>
                 </select>
                 <p class="mt-2 text-sm text-gray-500">
                   Select the AI model to use for chat completions
@@ -173,6 +177,7 @@ defmodule AdvisorAgentWeb.SettingsLive do
                 <div>
                   <label for="api_key" class="block text-sm font-medium text-gray-700 mb-2">
                     OpenAI API Key
+                    <span class="text-gray-500 font-normal">(Optional)</span>
                   </label>
                   <input
                     type="password"
@@ -181,10 +186,10 @@ defmodule AdvisorAgentWeb.SettingsLive do
                     value={@openai_api_key}
                     phx-change="update_api_key"
                     placeholder="sk-..."
-                    class="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                    class="block w-full px-3 py-2 text-gray-900 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
                   />
                   <p class="mt-2 text-sm text-gray-500">
-                    Your API key is stored securely and only used for your requests
+                    Leave blank to use the system default API key. If provided, your API key will be used for all requests.
                   </p>
                 </div>
               <% end %>

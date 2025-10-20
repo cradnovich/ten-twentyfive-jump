@@ -81,6 +81,9 @@ defmodule AdvisorAgent.ProactiveAgent do
 
   # Private function to process an event with ongoing instructions
   defp process_with_instructions(user, event_data, instructions, event_type) do
+    # Reload user from database to get latest settings (model, API key, etc.)
+    fresh_user = Repo.get(AdvisorAgent.User, user.id)
+
     # Build system message with ongoing instructions
     instructions_text =
       Enum.map_join(instructions, "\n", fn inst ->
@@ -108,7 +111,7 @@ defmodule AdvisorAgent.ProactiveAgent do
     ]
 
     # Call OpenAI with tools
-    case handle_tool_calling_loop(messages, user, 0) do
+    case handle_tool_calling_loop(messages, fresh_user, 0) do
       {:ok, response} ->
         if String.contains?(response, "NO_ACTION_NEEDED") do
           Logger.info("No proactive action needed for #{event_type}")
@@ -141,7 +144,7 @@ defmodule AdvisorAgent.ProactiveAgent do
       tools = Tools.get_tool_definitions()
 
       # Call OpenAI with tools
-      case call_openai_with_tools(messages, tools) do
+      case call_openai_with_tools(messages, tools, user) do
         {:ok, %{"role" => "assistant", "content" => content, "tool_calls" => nil}}
         when not is_nil(content) ->
           # No tool calls, we have the final response
@@ -193,15 +196,34 @@ defmodule AdvisorAgent.ProactiveAgent do
     end
   end
 
-  defp call_openai_with_tools(messages, tools) do
-    model_string = OpenAIModels.to_string(OpenAIModels.default_chat_model())
+  defp call_openai_with_tools(messages, tools, user) do
+    # Get user's preferred model or use default
+    model_string = if user.selected_model do
+      user.selected_model
+    else
+      OpenAIModels.to_string(OpenAIModels.default_chat_model())
+    end
 
-    case OpenAI.chat_completion(
-           model: model_string,
-           messages: messages,
-           tools: tools,
-           tool_choice: "auto"
-         ) do
+    # Get user's API key if provided
+    api_key = user.openai_api_key
+
+    # Log the parameters being sent to OpenAI
+    Logger.info("=== Proactive Agent calling OpenAI ===")
+    Logger.info("Model: #{model_string}")
+    Logger.info("Using custom API key: #{if api_key, do: "Yes", else: "No (using system default)"}")
+
+    # Build options for OpenAI call
+    options = [
+      model: model_string,
+      messages: messages,
+      tools: tools,
+      tool_choice: "auto"
+    ]
+
+    # Add API key if user provided one
+    options = if api_key, do: Keyword.put(options, :api_key, api_key), else: options
+
+    case OpenAI.chat_completion(options) do
       {:ok, %{choices: [%{"message" => message} | _]}} ->
         {:ok, message}
 

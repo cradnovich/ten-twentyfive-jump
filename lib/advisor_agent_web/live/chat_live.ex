@@ -54,14 +54,18 @@ defmodule AdvisorAgentWeb.ChatLive do
     unless current_user do
       {:noreply, socket}
     else
+      # Reload user from database to get latest settings (model, API key, etc.)
+      fresh_user = Repo.get(User, current_user.id)
+
       # Add user message to chat
       new_messages = socket.assigns.messages ++ [%{text: user_message, sender: :user}]
       socket = assign(socket, :messages, new_messages)
       socket = assign(socket, :user_input, "")
+      socket = assign(socket, :current_user, fresh_user)
 
       # Process message with RAG and tool calling
       socket =
-        case process_message_with_tools(user_message, current_user) do
+        case process_message_with_tools(user_message, fresh_user) do
           {:ok, response} ->
             new_messages = socket.assigns.messages ++ [%{text: response, sender: :agent}]
             assign(socket, :messages, new_messages)
