@@ -212,13 +212,14 @@ defmodule AdvisorAgentWeb.ChatComponents do
 
     ~H"""
     <div class={[
-      "group relative flex items-center justify-between gap-3 px-3 py-2 rounded-lg cursor-pointer transition-colors mb-1",
+      "group relative flex items-center justify-between gap-3 px-3 py-2 rounded-lg transition-colors mb-1",
       if(@thread.id == @current_thread_id, do: "bg-gray-100", else: "hover:bg-gray-50")
-    ]}
-    phx-click="switch_thread"
-    phx-value-thread_id={@thread.id}
-    >
-      <div class="flex-1 min-w-0">
+    ]}>
+      <div
+        class="flex-1 min-w-0 cursor-pointer"
+        phx-click="switch_thread"
+        phx-value-thread_id={@thread.id}
+      >
         <div class="flex items-center gap-2">
           <h4 class="text-sm font-medium text-gray-900 truncate">
             <%= @thread.title %>
@@ -235,8 +236,7 @@ defmodule AdvisorAgentWeb.ChatComponents do
       <button
         phx-click="delete_thread"
         phx-value-thread_id={@thread.id}
-        class="opacity-0 group-hover:opacity-100 p-1 hover:bg-gray-200 rounded transition-opacity"
-        onclick="event.stopPropagation()"
+        class="opacity-0 group-hover:opacity-100 p-1 hover:bg-gray-200 rounded transition-opacity flex-shrink-0"
       >
         <svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
