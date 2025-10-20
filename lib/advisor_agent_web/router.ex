@@ -30,6 +30,13 @@ defmodule AdvisorAgentWeb.Router do
     get "/:provider/callback", AuthController, :callback
   end
 
+  # Health check endpoint for Fly.io
+  scope "/", AdvisorAgentWeb do
+    pipe_through :api
+
+    get "/health", HealthController, :index
+  end
+
   # Other scopes may use custom stacks.
   # scope "/api", AdvisorAgentWeb do
   #   pipe_through :api

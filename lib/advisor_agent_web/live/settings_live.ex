@@ -77,9 +77,8 @@ defmodule AdvisorAgentWeb.SettingsLive do
   end
 
   # Helper function to determine if a model requires an API key
-  # For now, all OpenAI models show the API key input (but it's optional - system key is used as fallback)
-  # In the future, self-hosted models won't show the API key input
-  defp requires_api_key?("self-hosted"), do: false
+  # Self-hosted models don't need an API key
+  defp requires_api_key?("llama-3.2-3b-instruct"), do: false
   defp requires_api_key?(_model), do: true
 
   def render(assigns) do
@@ -161,11 +160,20 @@ defmodule AdvisorAgentWeb.SettingsLive do
                   value={@selected_model}
                   class="block w-full px-3 py-2 text-gray-900 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
                 >
-                  <%= for model <- OpenAIModels.list_chat_models() do %>
-                    <option value={OpenAIModels.to_string(model)} selected={@selected_model == OpenAIModels.to_string(model)}>
-                      <%= OpenAIModels.to_string(model) %>
-                    </option>
-                  <% end %>
+                  <optgroup label="Self-Hosted">
+                    <%= for model <- OpenAIModels.list_chat_models() |> Enum.filter(&OpenAIModels.self_hosted?/1) do %>
+                      <option value={OpenAIModels.to_string(model)} selected={@selected_model == OpenAIModels.to_string(model)}>
+                        <%= OpenAIModels.to_string(model) %>
+                      </option>
+                    <% end %>
+                  </optgroup>
+                  <optgroup label="OpenAI">
+                    <%= for model <- OpenAIModels.list_chat_models() |> Enum.reject(&OpenAIModels.self_hosted?/1) do %>
+                      <option value={OpenAIModels.to_string(model)} selected={@selected_model == OpenAIModels.to_string(model)}>
+                        <%= OpenAIModels.to_string(model) %>
+                      </option>
+                    <% end %>
+                  </optgroup>
                 </select>
                 <p class="mt-2 text-sm text-gray-500">
                   Select the AI model to use for chat completions

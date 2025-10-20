@@ -1,3 +1,4 @@
+# flyctl launch added from .gitignore
 # The directory Mix will write compiled artifacts to.
 /_build/
 
@@ -34,8 +35,26 @@ advisor_agent-*.tar
 # In case you use Node.js/npm, you want to ignore these.
 npm-debug.log
 /assets/node_modules/
-.env
 
-# Fly.io
-.fly/
-fly.toml.backup
+# Development environment files
+.env
+.env.local
+.env.*.local
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Git files
+.git/
+.gitignore
+
+# Documentation
+README.md

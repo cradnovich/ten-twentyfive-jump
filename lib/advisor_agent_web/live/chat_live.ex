@@ -423,10 +423,13 @@ defmodule AdvisorAgentWeb.ChatLive do
       tool_choice: "auto"
     ]
 
-    # Create config with API key if user provided one
-    config = if api_key, do: %OpenAI.Config{api_key: api_key}, else: %OpenAI.Config{}
-
-    result = OpenAI.chat_completion(params, config)
+    # Use direct HTTP call for self-hosted models
+    result = if OpenAIModels.self_hosted?(model_string) do
+      call_self_hosted_with_tools(model_string, messages, tools)
+    else
+      config = if api_key, do: %OpenAI.Config{api_key: api_key}, else: %OpenAI.Config{}
+      OpenAI.chat_completion(params, config)
+    end
 
     # Log the raw response from OpenAI
     Logger.info("=== OpenAI raw response ===")
@@ -561,6 +564,41 @@ defmodule AdvisorAgentWeb.ChatLive do
       last_30_days: filter_fn.(grouped_threads.last_30_days),
       older: filter_fn.(grouped_threads.older)
     }
+  end
+
+  defp call_self_hosted_with_tools(model, messages, tools) do
+    base_url = Application.get_env(:advisor_agent, :self_hosted_model_url, "http://localhost:8080")
+    url = "#{base_url}/v1/chat/completions"
+
+    body = Jason.encode!(%{
+      model: model,
+      messages: messages,
+      tools: tools,
+      tool_choice: "auto"
+    })
+
+    headers = [{"Content-Type", "application/json"}]
+    options = [recv_timeout: 120_000, timeout: 120_000]
+
+    case HTTPoison.post(url, body, headers, options) do
+      {:ok, %HTTPoison.Response{status_code: 200, body: response_body}} ->
+        case Jason.decode(response_body) do
+          {:ok, %{"choices" => [%{"message" => message} | _]}} ->
+            {:ok, %{choices: [%{"message" => message}]}}
+          {:ok, parsed} ->
+            Logger.error("Unexpected self-hosted response format: #{inspect(parsed)}")
+            {:error, "Unexpected response format"}
+          {:error, decode_error} ->
+            {:error, decode_error}
+        end
+
+      {:ok, %HTTPoison.Response{status_code: status_code, body: response_body}} ->
+        Logger.error("Self-hosted API error (#{status_code}): #{response_body}")
+        {:error, "HTTP #{status_code}"}
+
+      {:error, %HTTPoison.Error{reason: reason}} ->
+        {:error, reason}
+    end
   end
 
   def render(assigns) do

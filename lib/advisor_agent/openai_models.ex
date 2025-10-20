@@ -8,6 +8,7 @@ defmodule AdvisorAgent.OpenAIModels do
 
   # Available chat completion models
   @chat_models %{
+    self_hosted: "llama-3.2-3b-instruct",
     gpt_3_5_turbo: "gpt-3.5-turbo",
     gpt_4: "gpt-4",
     gpt_4_turbo: "gpt-4-turbo",
@@ -30,7 +31,7 @@ defmodule AdvisorAgent.OpenAIModels do
   @doc """
   Returns the default chat model.
   """
-  def default_chat_model, do: :gpt_4_1_mini
+  def default_chat_model, do: :self_hosted
 
   @doc """
   Returns the default embedding model.
@@ -95,5 +96,16 @@ defmodule AdvisorAgent.OpenAIModels do
   """
   def list_embedding_models do
     Map.keys(@embedding_models)
+  end
+
+  @doc """
+  Checks if the given model is a self-hosted model.
+  """
+  def self_hosted?(model) when is_atom(model) do
+    model == :self_hosted
+  end
+
+  def self_hosted?(model_string) when is_binary(model_string) do
+    model_string == "llama-3.2-3b-instruct"
   end
 end
