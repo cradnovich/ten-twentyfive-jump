@@ -19,6 +19,7 @@ defmodule AdvisorAgentWeb.Router do
     pipe_through :browser
 
     live "/", ChatLive, :index
+    live "/settings", SettingsLive, :index
   end
 
   scope "/auth", AdvisorAgentWeb do

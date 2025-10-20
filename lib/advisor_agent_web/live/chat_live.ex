@@ -32,7 +32,12 @@ defmodule AdvisorAgentWeb.ChatLive do
      |> assign(:current_user, current_user)
      |> assign(:user_input, "")
      |> assign(:active_tab, :chat)
+     |> assign(:show_user_menu, false)
      |> assign(:thread_started_at, DateTime.utc_now())}
+  end
+
+  def handle_event("toggle_user_menu", _params, socket) do
+    {:noreply, assign(socket, :show_user_menu, !socket.assigns.show_user_menu)}
   end
 
   def handle_event("switch_tab", %{"tab" => tab}, socket) do
@@ -154,7 +159,7 @@ defmodule AdvisorAgentWeb.ChatLive do
       tools = Tools.get_tool_definitions()
 
       # Call OpenAI with tools
-      case call_openai_with_tools(messages, tools) do
+      case call_openai_with_tools(messages, tools, current_user) do
         {:ok, %{"role" => "assistant", "content" => content, "tool_calls" => tool_calls}}
         when is_nil(tool_calls) and not is_nil(content) ->
           # No tool calls, we have the final response
@@ -206,24 +211,38 @@ defmodule AdvisorAgentWeb.ChatLive do
     end
   end
 
-  defp call_openai_with_tools(messages, tools) do
-    model = OpenAIModels.default_chat_model()
-    model_string = OpenAIModels.to_string(model)
+  defp call_openai_with_tools(messages, tools, current_user) do
+    # Get user's preferred model or use default
+    model_string = if current_user.selected_model do
+      current_user.selected_model
+    else
+      OpenAIModels.to_string(OpenAIModels.default_chat_model())
+    end
+
+    # Get user's API key if provided
+    api_key = current_user.openai_api_key
 
     # Log the parameters being sent to OpenAI
     Logger.info("=== Calling OpenAI with the following parameters ===")
     Logger.info("Model: #{model_string}")
+    Logger.info("Using custom API key: #{if api_key, do: "Yes", else: "No (using system default)"}")
     Logger.info("Messages: #{inspect(messages, pretty: true, limit: :infinity)}")
     Logger.info("Tools: #{inspect(tools, pretty: true, limit: :infinity)}")
     Logger.info("Tool choice: auto")
     Logger.info("=== End of OpenAI parameters ===")
 
-    result = OpenAI.chat_completion(
+    # Build options for OpenAI call
+    options = [
       model: model_string,
       messages: messages,
       tools: tools,
       tool_choice: "auto"
-    )
+    ]
+
+    # Add API key if user provided one
+    options = if api_key, do: Keyword.put(options, :api_key, api_key), else: options
+
+    result = OpenAI.chat_completion(options)
 
     # Log the raw response from OpenAI
     Logger.info("=== OpenAI raw response ===")
@@ -274,7 +293,7 @@ defmodule AdvisorAgentWeb.ChatLive do
     ~H"""
     <%= if @current_user do %>
       <div class="flex flex-col h-screen bg-white">
-        <.chat_header current_user={@current_user} />
+        <.chat_header current_user={@current_user} show_user_menu={@show_user_menu} />
         <.tab_nav active_tab={@active_tab} />
 
         <%= if @active_tab == :chat do %>

@@ -5,28 +5,73 @@ defmodule AdvisorAgentWeb.ChatComponents do
   use Phoenix.Component
 
   @doc """
-  Renders the chat header with user info and connection status.
+  Renders the chat header with user info and dropdown menu.
   """
   attr :current_user, :map, required: true
+  attr :show_user_menu, :boolean, default: false
 
   def chat_header(assigns) do
     ~H"""
     <div class="flex items-center justify-between px-6 py-4 border-b border-gray-200">
       <h1 class="text-xl font-semibold text-gray-900">Ask Anything</h1>
-      <div class="flex items-center gap-4">
-        <span class="text-sm text-gray-600"><%= @current_user.email %></span>
-        <%= if @current_user.hubspot_access_token do %>
-          <span class="px-3 py-1.5 text-xs font-medium text-green-700 bg-green-100 rounded-full">
-            Hubspot Connected
-          </span>
-        <% else %>
-          <a href="/auth/hubspot" class="px-4 py-2 text-sm font-medium text-white bg-orange-600 hover:bg-orange-700 rounded-lg">
-            Connect Hubspot
-          </a>
+
+      <!-- User Dropdown Menu -->
+      <div class="relative">
+        <button
+          phx-click="toggle_user_menu"
+          class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-100 transition-colors"
+        >
+          <img
+            src={@current_user.picture || "/images/default-avatar.png"}
+            alt={@current_user.name}
+            class="w-8 h-8 rounded-full"
+          />
+          <span class="text-sm font-medium text-gray-900"><%= @current_user.name %></span>
+          <svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+
+        <!-- Dropdown Menu -->
+        <%= if @show_user_menu do %>
+          <div class="absolute right-0 mt-2 w-72 bg-white rounded-lg shadow-lg border border-gray-200 z-50">
+            <!-- User Info Header -->
+            <div class="px-4 py-3 border-b border-gray-200">
+              <p class="text-sm font-medium text-gray-900"><%= @current_user.name %></p>
+              <p class="text-xs text-gray-600"><%= @current_user.email %></p>
+            </div>
+
+            <!-- Menu Items -->
+            <div class="py-2">
+              <.link
+                navigate="/settings"
+                class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+              >
+                <div class="flex items-center">
+                  <svg class="w-5 h-5 mr-3 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                  Settings
+                </div>
+              </.link>
+            </div>
+
+            <div class="border-t border-gray-200 py-2">
+              <a
+                href="/auth/logout"
+                class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+              >
+                <div class="flex items-center">
+                  <svg class="w-5 h-5 mr-3 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                  </svg>
+                  Logout
+                </div>
+              </a>
+            </div>
+          </div>
         <% end %>
-        <a href="/auth/logout" class="px-4 py-2 text-sm font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-lg">
-          Logout
-        </a>
       </div>
     </div>
     """
