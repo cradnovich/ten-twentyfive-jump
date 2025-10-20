@@ -34,6 +34,13 @@ defmodule AdvisorAgentWeb.ChatLive do
       {nil, []}
     end
 
+    # Load threads for history tab
+    grouped_threads = if current_user do
+      Repo.get_threads_grouped_by_date(current_user.id)
+    else
+      %{today: [], yesterday: [], last_7_days: [], last_30_days: [], older: []}
+    end
+
     {:ok,
      assign(socket, :messages, messages)
      |> assign(:current_user, current_user)
@@ -42,7 +49,8 @@ defmodule AdvisorAgentWeb.ChatLive do
      |> assign(:show_user_menu, false)
      |> assign(:current_thread, thread)
      |> assign(:thread_started_at, if(thread, do: thread.inserted_at, else: DateTime.utc_now()))
-     |> assign(:search_query, "")}
+     |> assign(:search_query, "")
+     |> assign(:grouped_threads, grouped_threads)}
   end
 
   defp load_or_create_thread(user) do
@@ -78,7 +86,18 @@ defmodule AdvisorAgentWeb.ChatLive do
   end
 
   def handle_event("switch_tab", %{"tab" => tab}, socket) do
-    {:noreply, assign(socket, :active_tab, String.to_atom(tab))}
+    tab_atom = String.to_atom(tab)
+
+    # Reload threads when switching to history tab
+    socket = if tab_atom == :history && socket.assigns.current_user do
+      grouped_threads = Repo.get_threads_grouped_by_date(socket.assigns.current_user.id)
+      |> filter_threads_by_search(socket.assigns.search_query)
+      assign(socket, :grouped_threads, grouped_threads)
+    else
+      socket
+    end
+
+    {:noreply, assign(socket, :active_tab, tab_atom)}
   end
 
   def handle_event("update_user_input", %{"user_message" => value}, socket) do
@@ -148,12 +167,17 @@ defmodule AdvisorAgentWeb.ChatLive do
       # Create new thread
       {thread, messages} = create_new_thread(current_user)
 
+      # Reload threads for history
+      grouped_threads = Repo.get_threads_grouped_by_date(current_user.id)
+      |> filter_threads_by_search(socket.assigns.search_query)
+
       {:noreply,
        socket
        |> assign(:current_thread, thread)
        |> assign(:messages, messages)
        |> assign(:thread_started_at, thread.inserted_at)
-       |> assign(:active_tab, :chat)}
+       |> assign(:active_tab, :chat)
+       |> assign(:grouped_threads, grouped_threads)}
     end
   end
 
@@ -201,6 +225,10 @@ defmodule AdvisorAgentWeb.ChatLive do
       # Delete the thread
       {:ok, _} = Repo.delete_thread(thread_id)
 
+      # Reload threads for history
+      grouped_threads = Repo.get_threads_grouped_by_date(current_user.id)
+      |> filter_threads_by_search(socket.assigns.search_query)
+
       # If this was the active thread, create a new one
       socket = if current_thread && current_thread.id == thread_id do
         {thread, messages} = create_new_thread(current_user)
@@ -213,12 +241,24 @@ defmodule AdvisorAgentWeb.ChatLive do
         socket
       end
 
-      {:noreply, socket}
+      {:noreply, assign(socket, :grouped_threads, grouped_threads)}
     end
   end
 
   def handle_event("search_threads", %{"search" => %{"query" => query}}, socket) do
-    {:noreply, assign(socket, :search_query, query)}
+    # Update search query and reload filtered threads
+    socket = socket
+    |> assign(:search_query, query)
+
+    socket = if socket.assigns.current_user do
+      grouped_threads = Repo.get_threads_grouped_by_date(socket.assigns.current_user.id)
+      |> filter_threads_by_search(query)
+      assign(socket, :grouped_threads, grouped_threads)
+    else
+      socket
+    end
+
+    {:noreply, socket}
   end
 
   defp process_message_with_tools(user_message, current_user) do
@@ -434,15 +474,6 @@ defmodule AdvisorAgentWeb.ChatLive do
   end
 
   defp render_history(assigns) do
-    # Get threads grouped by date and assign to assigns
-    assigns = if assigns.current_user do
-      grouped = Repo.get_threads_grouped_by_date(assigns.current_user.id)
-      |> filter_threads_by_search(assigns.search_query)
-      assign(assigns, :grouped_threads, grouped)
-    else
-      assign(assigns, :grouped_threads, %{today: [], yesterday: [], last_7_days: [], last_30_days: [], older: []})
-    end
-
     ~H"""
     <!-- Search Box -->
     <div class="mb-6">

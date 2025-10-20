@@ -117,22 +117,27 @@ defmodule AdvisorAgent.Repo do
 
     threads = get_user_threads(user_id)
 
+    # Helper function to convert NaiveDateTime to DateTime in UTC for comparison
+    to_datetime = fn naive_dt ->
+      DateTime.from_naive!(naive_dt, "Etc/UTC")
+    end
+
     %{
-      today: Enum.filter(threads, fn t -> DateTime.compare(t.updated_at, today_start) in [:gt, :eq] end),
+      today: Enum.filter(threads, fn t -> DateTime.compare(to_datetime.(t.updated_at), today_start) in [:gt, :eq] end),
       yesterday: Enum.filter(threads, fn t ->
-        DateTime.compare(t.updated_at, yesterday_start) in [:gt, :eq] &&
-        DateTime.compare(t.updated_at, today_start) == :lt
+        DateTime.compare(to_datetime.(t.updated_at), yesterday_start) in [:gt, :eq] &&
+        DateTime.compare(to_datetime.(t.updated_at), today_start) == :lt
       end),
       last_7_days: Enum.filter(threads, fn t ->
-        DateTime.compare(t.updated_at, last_7_days_start) in [:gt, :eq] &&
-        DateTime.compare(t.updated_at, yesterday_start) == :lt
+        DateTime.compare(to_datetime.(t.updated_at), last_7_days_start) in [:gt, :eq] &&
+        DateTime.compare(to_datetime.(t.updated_at), yesterday_start) == :lt
       end),
       last_30_days: Enum.filter(threads, fn t ->
-        DateTime.compare(t.updated_at, last_30_days_start) in [:gt, :eq] &&
-        DateTime.compare(t.updated_at, last_7_days_start) == :lt
+        DateTime.compare(to_datetime.(t.updated_at), last_30_days_start) in [:gt, :eq] &&
+        DateTime.compare(to_datetime.(t.updated_at), last_7_days_start) == :lt
       end),
       older: Enum.filter(threads, fn t ->
-        DateTime.compare(t.updated_at, last_30_days_start) == :lt
+        DateTime.compare(to_datetime.(t.updated_at), last_30_days_start) == :lt
       end)
     }
   end
