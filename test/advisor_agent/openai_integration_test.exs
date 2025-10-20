@@ -2,7 +2,7 @@ defmodule AdvisorAgent.OpenAIIntegrationTest do
   use ExUnit.Case, async: false
   require Logger
 
-  alias AdvisorAgent.Tools
+  alias AdvisorAgent.{OpenAIModels, Tools}
 
   @moduletag :integration
 
@@ -114,10 +114,13 @@ defmodule AdvisorAgent.OpenAIIntegrationTest do
 
   # Helper function with the same logging as ChatLive
   defp call_openai_with_tools(messages, tools) do
+    model = OpenAIModels.default_chat_model()
+    model_string = OpenAIModels.to_string(model)
+
     # Log the parameters being sent to OpenAI
     IO.puts("\n" <> String.duplicate("=", 80))
     IO.puts("=== Calling OpenAI with the following parameters ===")
-    IO.puts("Model: gpt-3.5-turbo")
+    IO.puts("Model: #{model_string}")
     IO.puts("\nMessages:")
     IO.inspect(messages, pretty: true, limit: :infinity)
     IO.puts("\nTools (#{length(tools)} total):")
@@ -127,7 +130,7 @@ defmodule AdvisorAgent.OpenAIIntegrationTest do
     IO.puts(String.duplicate("=", 80) <> "\n")
 
     result = OpenAI.chat_completion(
-      model: "gpt-3.5-turbo",
+      model: model_string,
       messages: messages,
       tools: tools,
       tool_choice: "auto"

@@ -3,7 +3,7 @@ defmodule AdvisorAgent.TaskManager do
   Manages multi-step tasks that require waiting for external responses.
   """
 
-  alias AdvisorAgent.{Repo, Tools, ToolExecutor}
+  alias AdvisorAgent.{OpenAIModels, Repo, Tools, ToolExecutor}
   require Logger
 
   @doc """
@@ -153,8 +153,10 @@ defmodule AdvisorAgent.TaskManager do
   end
 
   defp call_openai_with_tools(messages, tools) do
+    model_string = OpenAIModels.to_string(OpenAIModels.default_chat_model())
+
     case OpenAI.chat_completion(
-           model: "gpt-3.5-turbo",
+           model: model_string,
            messages: messages,
            tools: tools,
            tool_choice: "auto"

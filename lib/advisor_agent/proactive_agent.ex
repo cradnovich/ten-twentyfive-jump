@@ -3,7 +3,7 @@ defmodule AdvisorAgent.ProactiveAgent do
   Handles proactive behavior based on incoming events and ongoing instructions.
   """
 
-  alias AdvisorAgent.{Repo, TaskManager, Tools, ToolExecutor}
+  alias AdvisorAgent.{OpenAIModels, Repo, TaskManager, Tools, ToolExecutor}
   require Logger
 
   @doc """
@@ -194,8 +194,10 @@ defmodule AdvisorAgent.ProactiveAgent do
   end
 
   defp call_openai_with_tools(messages, tools) do
+    model_string = OpenAIModels.to_string(OpenAIModels.default_chat_model())
+
     case OpenAI.chat_completion(
-           model: "gpt-3.5-turbo",
+           model: model_string,
            messages: messages,
            tools: tools,
            tool_choice: "auto"

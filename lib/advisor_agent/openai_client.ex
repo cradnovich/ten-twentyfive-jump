@@ -3,13 +3,15 @@ defmodule AdvisorAgent.OpenAIClient do
   Client for interacting with the OpenAI API to generate embeddings.
   """
 
-  @embedding_model "text-embedding-ada-002"
+  alias AdvisorAgent.OpenAIModels
 
   @doc """
   Generates an embedding for the given text.
   """
   def generate_embedding(text) when is_binary(text) do
-    case OpenAI.embeddings(model: @embedding_model, input: text) do
+    model_string = OpenAIModels.to_string(OpenAIModels.default_embedding_model())
+
+    case OpenAI.embeddings(model: model_string, input: text) do
       {:ok, %{data: [%{"embedding" => embedding} | _rest]}} ->
         {:ok, embedding}
 
@@ -20,9 +22,16 @@ defmodule AdvisorAgent.OpenAIClient do
 
   @doc """
   Generates a chat completion for the given messages.
+
+  ## Parameters
+    - messages: List of message maps for the conversation
+    - model: Atom representing the model (default: :gpt_3_5_turbo)
   """
-  def generate_chat_completion(messages, model \\ "gpt-3.5-turbo") do
-    case OpenAI.chat_completion(model: model, messages: messages) do
+  def generate_chat_completion(messages, model \\ nil) do
+    model_atom = model || OpenAIModels.default_chat_model()
+    model_string = OpenAIModels.to_string(model_atom)
+
+    case OpenAI.chat_completion(model: model_string, messages: messages) do
       {:ok, %{choices: [%{"message" => %{"content" => content}} | _rest]}} ->
         {:ok, content}
 

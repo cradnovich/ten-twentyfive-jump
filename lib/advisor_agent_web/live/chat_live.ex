@@ -1,7 +1,7 @@
 defmodule AdvisorAgentWeb.ChatLive do
   use AdvisorAgentWeb, :live_view
 
-  alias AdvisorAgent.{GmailClient, HubspotClient, NomicClient, Repo, Tools, ToolExecutor, User}
+  alias AdvisorAgent.{GmailClient, HubspotClient, NomicClient, OpenAIModels, Repo, Tools, ToolExecutor, User}
   import AdvisorAgentWeb.ChatComponents
   require Logger
 
@@ -207,16 +207,19 @@ defmodule AdvisorAgentWeb.ChatLive do
   end
 
   defp call_openai_with_tools(messages, tools) do
+    model = OpenAIModels.default_chat_model()
+    model_string = OpenAIModels.to_string(model)
+
     # Log the parameters being sent to OpenAI
     Logger.info("=== Calling OpenAI with the following parameters ===")
-    Logger.info("Model: gpt-3.5-turbo")
+    Logger.info("Model: #{model_string}")
     Logger.info("Messages: #{inspect(messages, pretty: true, limit: :infinity)}")
     Logger.info("Tools: #{inspect(tools, pretty: true, limit: :infinity)}")
     Logger.info("Tool choice: auto")
     Logger.info("=== End of OpenAI parameters ===")
 
     result = OpenAI.chat_completion(
-      model: "gpt-3.5-turbo",
+      model: model_string,
       messages: messages,
       tools: tools,
       tool_choice: "auto"
