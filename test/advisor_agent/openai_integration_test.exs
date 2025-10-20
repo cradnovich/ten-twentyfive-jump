@@ -114,7 +114,7 @@ defmodule AdvisorAgent.OpenAIIntegrationTest do
 
   # Helper function with the same logging as ChatLive
   defp call_openai_with_tools(messages, tools) do
-    model = OpenAIModels.default_chat_model()
+    model = :gpt_4_1_mini
     model_string = OpenAIModels.to_string(model)
 
     # Log the parameters being sent to OpenAI
